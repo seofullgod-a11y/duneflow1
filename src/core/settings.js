@@ -26,7 +26,7 @@ export const S = {
     ambientBlue: 1.0, // strength of the cool shadow shift
 
     // ------------------------------------------------------------- atmosphere
-    fogDensity: 0.0155,
+    fogDensity: 0.019,
     fogHeightFalloff: 0.045,
     fogStart: 24,
     aerialStrength: 1.35,

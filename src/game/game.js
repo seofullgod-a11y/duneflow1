@@ -213,7 +213,7 @@ export class Game {
         // Storm streaks: a faint constant screen-space wind smear whose weight
         // rides the gust envelope, so squalls visibly rake the frame. main.js
         // takes the max of this and the surf streak.
-        this.stormStreak01 = 0.05 + this.wind.gust * 0.11;
+        this.stormStreak01 = 0.10 + this.wind.gust * 0.22;
 
         // ---- hud ----------------------------------------------------------
         this.hud.setHp(Math.max(0, this.hp));

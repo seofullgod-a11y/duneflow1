@@ -31,11 +31,11 @@
 import { S } from "../core/settings.js";
 
 /** Grains per second of spindrift at full wind, before the gust envelope. */
-const SPINDRIFT_RATE = 95;
+const SPINDRIFT_RATE = 150;
 /** Grains per second of airborne dust at full wind. */
-const DUST_RATE = 30;
+const DUST_RATE = 48;
 /** Large slow dust veils per second — the mid-distance murk of the storm. */
-const VEIL_RATE = 8;
+const VEIL_RATE = 16;
 
 /** How far up/down-wind of the player the emitters sit, metres. */
 const UPWIND = 26;
@@ -95,7 +95,7 @@ export class Wind {
         this._spinAcc += SPINDRIFT_RATE * env * dt;
         let nSpin = this._spinAcc | 0;
         this._spinAcc -= nSpin;
-        if (nSpin > 60) nSpin = 60; // clamp a catch-up spike after a hitch
+        if (nSpin > 90) nSpin = 90; // clamp a catch-up spike after a hitch
         for (let i = 0; i < nSpin; i++) {
             // Start upwind of the player and off to a random side, so the
             // streamer crosses frame.
@@ -111,10 +111,10 @@ export class Wind {
                 wx * sp + cx * (Math.random() - 0.5) * 1.2,
                 0.25 + Math.random() * 0.35,
                 wz * sp + cz * (Math.random() - 0.5) * 1.2,
-                0.02 + Math.random() * 0.03,
-                0.8 + Math.random() * 0.6,
+                0.045 + Math.random() * 0.05,
+                1.0 + Math.random() * 0.8,
                 0,      // powder puff
-                0.5     // low drag: it carries downwind rather than stopping dead
+                0.45    // low drag: it carries downwind rather than stopping dead
             );
         }
 
@@ -125,7 +125,7 @@ export class Wind {
         this._dustAcc += DUST_RATE * dustEnv * dt;
         let nDust = this._dustAcc | 0;
         this._dustAcc -= nDust;
-        if (nDust > 24) nDust = 24;
+        if (nDust > 36) nDust = 36;
         for (let i = 0; i < nDust; i++) {
             const along = -UPWIND + Math.random() * 12;
             const across = (Math.random() * 2 - 1) * SPREAD;
@@ -138,10 +138,10 @@ export class Wind {
                 wx * sp + cx * (Math.random() - 0.5) * 1.6,
                 0.5 + Math.random() * 1.0,
                 wz * sp + cz * (Math.random() - 0.5) * 1.6,
-                0.06 + Math.random() * 0.07,
-                1.8 + Math.random() * 1.8,
+                0.10 + Math.random() * 0.10,
+                2.0 + Math.random() * 2.0,
                 0,
-                0.7
+                0.6
             );
         }
 
@@ -154,10 +154,10 @@ export class Wind {
         this._veilAcc += VEIL_RATE * (0.5 + env * 0.7) * dt;
         let nVeil = this._veilAcc | 0;
         this._veilAcc -= nVeil;
-        if (nVeil > 10) nVeil = 10;
+        if (nVeil > 20) nVeil = 20;
         for (let i = 0; i < nVeil; i++) {
             const ang = Math.random() * Math.PI * 2;
-            const r = 20 + Math.random() * 50;
+            const r = 8 + Math.random() * 48;
             const x = focus.x + Math.cos(ang) * r;
             const z = focus.z + Math.sin(ang) * r;
             const gy = this.terrain.heightAt(x, z);
@@ -165,10 +165,10 @@ export class Wind {
             this.spray.emit(
                 x, gy + 1.0 + Math.random() * 3.2, z,
                 wx * sp, 0.2 + Math.random() * 0.5, wz * sp,
-                0.16 + Math.random() * 0.18,
-                3.5 + Math.random() * 2.5,
+                0.40 + Math.random() * 0.55,
+                4.0 + Math.random() * 3.0,
                 0,
-                0.35
+                0.30
             );
         }
     }
