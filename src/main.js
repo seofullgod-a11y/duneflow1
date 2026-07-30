@@ -166,7 +166,7 @@ async function boot() {
     // ------------------------------------------------------------ gameplay
     // The game layer touches the engine only through public seams; see
     // src/game/game.js for the contract.
-    const game = new Game({ terrain, controller: character, rig, spray, post });
+    const game = new Game({ terrain, controller: character, rig, spray, post, spells });
 
     const overlay = new Overlay({ rig, character });
     initInput(canvas, { onToggleOverlay: () => overlay.toggle() });
@@ -297,6 +297,7 @@ async function boot() {
     globalThis.SNOWFLOW = {
         engine, scene, rig, character, figure, contact, spray, wake, spells,
         overlay, terrain, sky, shadows, post, depthPass, game,
+        controls: game.controls, wind: game.wind, worm: game.worm,
         S, input, perfStats: stats,
     };
 }

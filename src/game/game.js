@@ -19,6 +19,8 @@
 import { Hud } from "./hud.js";
 import { SpiceField } from "./spice.js";
 import { WormSystem } from "./worm.js";
+import { Wind } from "./wind.js";
+import { Controls } from "./controls.js";
 
 export class Game {
     /**
@@ -28,6 +30,7 @@ export class Game {
      *   rig: import("../core/camera.js").CameraRig,
      *   spray: import("../vfx/particles.js").SprayField,
      *   post: import("../post/postChain.js").PostChain,
+     *   spells: import("../spells/spellSystem.js").SpellSystem,
      * }} ctx
      */
     constructor(ctx) {
@@ -49,8 +52,38 @@ export class Game {
             (type) => this._onWormEvent(type)
         );
 
+        // Ambient desert wind — spindrift and gust dust through the spray pool.
+        this.wind = new Wind(ctx.terrain, ctx.spray);
+
+        // On-screen controls (touch + mouse). The attack is Water Lash: a held
+        // Ribbon cast, so the whip already tracks aim and scores the sand.
+        this.controls = new Controls({
+            spells: ctx.spells,
+            onAttack: (held) => this._attack(held),
+        });
+
+        this._attacking = false;
         this._intro = 4.5;
         this.hud.setSpice(0);
+    }
+
+    /**
+     * Water Lash. Held, it drives the Ribbon spell (a whip of water that tracks
+     * the aim and scores the sand) plus a small camera kick on the leading edge,
+     * so the attack has weight without needing a new system.
+     *
+     * Routed through the spell system's `debugRibbon` latch rather than a direct
+     * `holdRibbon` call: the per-frame dispatch already folds that flag in with
+     * `input.spellHeld2`, so the attack button and the spell-2 button compose
+     * instead of fighting over the ribbon each frame.
+     * @param {boolean} held
+     */
+    _attack(held) {
+        if (held && !this._attacking) {
+            this.ctx.rig.addTrauma(0.18);
+        }
+        this._attacking = held;
+        this.ctx.spells.debugRibbon = held;
     }
 
     _onWormEvent(type) {
@@ -92,6 +125,7 @@ export class Game {
 
         this.spiceField.update(dt, ch.position);
         this.worm.update(dt);
+        this.wind.update(dt, ch.position);
         this.hud.setNoise(this.worm.noise, this.worm.hunting);
     }
 }

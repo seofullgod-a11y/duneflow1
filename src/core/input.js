@@ -27,6 +27,19 @@ export const input = {
     spellHeld2: false,
 
     locked: false,
+
+    // ---- touch / on-screen control sources ------------------------------
+    // The on-screen controls (src/game/controls.js) write these; `pollInput`
+    // merges them with the keyboard so both paths end up in the same axes and
+    // nothing downstream knows or cares which device drove them.
+    touchMoveX: 0,
+    touchMoveZ: 0,
+    touchLookX: 0, // radians of look queued by the camera stick this frame
+    touchLookY: 0,
+    touchSprint: false,
+    touchSurf: false,
+    /** True while the on-screen controls have taken over (any touch seen). */
+    touchActive: false,
 };
 
 const keys = Object.create(null);
@@ -130,6 +143,11 @@ export function pollInput() {
     if (keys.KeyD || keys.ArrowRight) x += 1;
     if (keys.KeyA || keys.ArrowLeft) x -= 1;
 
+    // Fold in the on-screen movement stick. It already delivers a value inside
+    // the unit disc, so it just adds to the keyboard axes before the clamp.
+    x += input.touchMoveX;
+    z += input.touchMoveZ;
+
     // Clamp to a unit disc so diagonals aren't faster.
     const len = Math.sqrt(x * x + z * z);
     if (len > 1) {
@@ -139,7 +157,21 @@ export function pollInput() {
     input.moveX = x;
     input.moveZ = z;
     input.moving = len > 0.001;
-    input.sprint = !!(keys.ShiftLeft || keys.ShiftRight);
+    input.sprint = !!(keys.ShiftLeft || keys.ShiftRight) || input.touchSprint;
+
+    // The camera stick queues look deltas the same way the mouse does.
+    input.lookX += input.touchLookX;
+    input.lookY += input.touchLookY;
+    input.touchLookX = 0;
+    input.touchLookY = 0;
+
+    // Surf is a held state. The mouse sets it on button 2 down/up; the on-screen
+    // surf toggle mirrors that through `touchSurf`. OR them so either device can
+    // hold it, but let the touch toggle also *release* it — otherwise a mouse
+    // that never surfed would pin surf on forever once the toggle turned off.
+    if (input.touchActive) {
+        input.surf = input.touchSurf || input.surf;
+    }
 }
 
 /** Clear per-frame accumulators. Called at the very end of the frame. */
