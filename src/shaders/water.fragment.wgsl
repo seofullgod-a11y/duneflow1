@@ -103,7 +103,8 @@ uniform spellLightCount: f32;
 /// length, because it is glacial melt full of entrained snow rather than a
 /// swimming pool. These coefficients put the same tint at a tenth of the path
 /// length.
-const WATER_ABSORB: vec3f = vec3f(3.40, 0.72, 0.34);
+// DESERT: a bent body of sand transmits amber — blue dies first in dust.
+const WATER_ABSORB: vec3f = vec3f(0.55, 1.60, 3.60);
 
 @fragment
 fn main(input: FragmentInputs) -> FragmentOutputs {
@@ -223,7 +224,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // underneath could show through it. Exactly the failure the spray's forward
     // scatter had, for exactly the same reason.
     let inScatter = backScatter(N, L, V, 0.55, 2.6, 1.0);
-    let scatterTint = mix(vec3f(0.40, 0.80, 1.0), vec3f(0.72, 0.94, 1.0), exp(-path * 1.6));
+    let scatterTint = mix(vec3f(1.0, 0.55, 0.20), vec3f(1.0, 0.86, 0.58), exp(-path * 1.6));
     color += sun * INV_PI * scatterTint * inScatter
            * (0.55 + 1.3 * input.vMilk) * uniforms.sssStrength
            * mix(0.30, 1.0, shadow);
@@ -240,7 +241,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // transparency rather than tinting it, and the two coexist the way real
     // slush does.
     if (input.vMilk > 0.002) {
-        let slushAlbedo = vec3f(0.86, 0.90, 0.96);
+        let slushAlbedo = vec3f(0.660, 0.530, 0.360); // DESERT: entrained sand
         let d = wrapDiffuse(NdotL, 0.62);
         var slush = slushAlbedo * INV_PI * sun * d * shadow;
         slush += slushAlbedo * INV_PI * shIrradiance(N, uniforms.shR)
@@ -259,7 +260,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
         let fn2 = noise2(fp * 22.0 + vec2f(t * 1.7, -t * 1.1)) * 0.5 + 0.5;
         let fn3 = noise2(fp * 61.0 - vec2f(t * 3.3, t * 2.1)) * 0.5 + 0.5;
         foam = clamp(foam * (0.35 + 1.5 * fn2 * (0.5 + 0.7 * fn3)), 0.0, 1.0);
-        let foamAlbedo = vec3f(0.93, 0.955, 0.99);
+        let foamAlbedo = vec3f(0.780, 0.660, 0.480); // DESERT: torn dust froth
         var fc = foamAlbedo * INV_PI * sun * wrapDiffuse(NdotL, 0.72) * shadow;
         fc += foamAlbedo * INV_PI * shIrradiance(N, uniforms.shR) * uniforms.ambientIntensity;
         fc += snowSubsurface(N, L, V, sun, 0.25, uniforms.sssStrength, 1.4)
@@ -285,7 +286,9 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // sky at grazing and running a 0.27 roughness lobe, and it came out looking
     // like moulded plastic: opaque, which was right, and polished, which was not.
     // A mass of ice crystals in air has no specular surface at all.
-    let F = min(fresnelSchlick(NdotV, vec3f(0.02)), vec3f(0.72));
+    // DESERT: a mass of grains has almost no specular skin — keep just enough
+    // sheen to read the curvature, nowhere near water's mirror.
+    let F = min(fresnelSchlick(NdotV, vec3f(0.012)), vec3f(0.26));
     let skyRefl = textureSampleLevel(skyLUT, skyLUTSampler, dirToLatLong(mirror), 0.7).rgb;
     color = mix(color, skyRefl, F * (1.0 - foam * 0.7) * (1.0 - input.vMilk * 0.88));
 
@@ -293,7 +296,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // that runs along the top of an arc and sells its curvature.
     if (NdotL > 0.0) {
         let H = normalize(V + L);
-        let rough = mix(0.055, 0.68, max(foam * 0.55, input.vMilk));
+        let rough = mix(0.24, 0.72, max(foam * 0.55, input.vMilk));
         let D = distributionGGX(clamp(dot(N, H), 0.0, 1.0), rough);
         let Vis = visSmithGGXCorrelated(NdotV, NdotL, rough);
         let Fs = fresnelSchlick(clamp(dot(V, H), 0.0, 1.0), vec3f(0.02));
@@ -317,7 +320,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // from inside instead of being a dark shape against a lit crater.
     if (uniforms.spellLightCount > 0.5) {
         color += spellLightingSurface(
-            world, N, V, mix(vec3f(0.35, 0.62, 0.78), vec3f(0.9), input.vMilk),
+            world, N, V, mix(vec3f(0.72, 0.52, 0.30), vec3f(0.70, 0.58, 0.42), input.vMilk),
             vec3f(0.02), 0.12, 0.55,
             uniforms.spellLightPos, uniforms.spellLightCol, uniforms.spellLightCount
         );

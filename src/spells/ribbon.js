@@ -519,7 +519,7 @@ export class Ribbon {
         const s = this.strand;
         const n = Math.min(this._count + 1, STRAND_COLS);
         if (n < 3) {
-            water.setParams(s, PROFILE_TUBE, 0.12, 0, 0);
+            water.setParams(s, PROFILE_TUBE, 0.55, 0, 0);
             return;
         }
 
@@ -619,7 +619,7 @@ export class Ribbon {
             px = x; py = y; pz = z;
         }
 
-        water.setParams(s, PROFILE_TUBE, 0.14, clamp01(this.blend * 1.3), n);
+        water.setParams(s, PROFILE_TUBE, 0.58, clamp01(this.blend * 1.3), n);
     }
 
     // No light, unlike the other four spells. Those are all *events* — a wave

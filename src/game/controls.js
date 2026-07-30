@@ -103,9 +103,9 @@ const CSS = `
 .slot.wide { grid-column: span 3; }
 .slot.wide .g { font-size: 22px; }
 .slot.wide .n { font-size: 10px; letter-spacing: 0.24em; }
-.slot.lash { border-color: rgba(120, 190, 255, 0.55); }
-.slot.lash .g { color: #9cd0ff; }
-.slot.lash.held { background: rgba(30, 60, 90, 0.7); }
+.slot.lash { border-color: rgba(232, 140, 60, 0.65); }
+.slot.lash .g { color: #ffc27a; }
+.slot.lash.held { background: rgba(90, 50, 20, 0.7); }
 `;
 
 /** Max nub travel, px — full stick deflection. */
@@ -113,9 +113,9 @@ const STICK_R = 52;
 
 /** Spell metadata: key → glyph, short label, plate name. */
 const SPELLS = [
-    { key: 1, g: "\u2312", n: "sweep",  plate: "Slush Sweep" },
-    { key: 2, g: "\u224b", n: "ribbon", plate: "Water Ribbon" },
-    { key: 3, g: "\u2607", n: "bloom",  plate: "Sand Bloom" },
+    { key: 1, g: "\u2312", n: "sweep",  plate: "Sand Sweep" },
+    { key: 2, g: "\u224b", n: "ribbon", plate: "Sand Ribbon" },
+    { key: 3, g: "\u2607", n: "burst",  plate: "Dune Burst" },
     { key: 4, g: "\u2b22", n: "spice",  plate: "Crystallise Spice" },
     { key: 5, g: "\u06de", n: "vortex", plate: "Sand Vortex" },
 ];
@@ -152,7 +152,7 @@ export class Controls {
             <div id="slots">
                 ${slotHtml}
                 <div class="slot wide lash" id="slot-lash">
-                    <span class="g">\u2248</span><span class="n">water lash</span>
+                    <span class="g">\u2248</span><span class="n">sand lash</span>
                 </div>
                 <div class="slot wide" id="slot-surf" style="grid-column: span 2;">
                     <span class="g">\u224f</span><span class="n">surf</span>
@@ -268,7 +268,7 @@ export class Controls {
 
         // Water Lash — the attack, a hold.
         this._hold(document.getElementById("slot-lash"),
-            () => { this.onAttack(true); this.onCast("Water Lash"); },
+            () => { this.onAttack(true); this.onCast("Sand Lash"); },
             () => this.onAttack(false));
 
         // Surf toggle.

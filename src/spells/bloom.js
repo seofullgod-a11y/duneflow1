@@ -121,7 +121,7 @@ export class Bloom {
         const drop = 1 - smooth01((t - 0.95) / 0.80);
         const env = rise * drop;
         if (env <= 0.002) {
-            water.setParams(s, PROFILE_TUBE, 0.5, 0, 0);
+            water.setParams(s, PROFILE_TUBE, 0.70, 0, 0);
             return;
         }
 
@@ -176,7 +176,7 @@ export class Bloom {
             px = x; py = y; pz = z;
         }
 
-        water.setParams(s, PROFILE_TUBE, 0.42, clamp01(env * 1.5), COLS);
+        water.setParams(s, PROFILE_TUBE, 0.70, clamp01(env * 1.5), COLS);
 
         // Two lights: one down in the crater, one riding the head. The crater
         // one is what actually lights the rim and the fallout around the base,
@@ -184,11 +184,11 @@ export class Bloom {
         // than a bright column standing on dark ground.
         ctx.lights.add(
             this.x, this.y + 0.35, this.z,
-            11.0, 0.44, 0.78, 1.0, 22.0 * env
+            11.0, 1.0, 0.68, 0.34, 22.0 * env
         );
         ctx.lights.add(
             this.x + this._leanX * top * 0.5, this.y + top * 0.92, this.z + this._leanZ * top * 0.5,
-            7.5, 0.55, 0.82, 1.0, 9.0 * env
+            7.5, 1.0, 0.76, 0.46, 9.0 * env
         );
     }
 

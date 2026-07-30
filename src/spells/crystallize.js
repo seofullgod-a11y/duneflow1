@@ -94,7 +94,7 @@ export class Crystallize {
         const form = 1 - smooth01((this.t - PLANT_TIME) / 0.9);
         const ember = 0.10 + 0.06 * Math.sin(this.t * 1.7);
         const k = 0.35 + 12.0 * form;
-        ctx.lights.add(this.x, this.y + 0.55, this.z, 7.5, 0.52, 0.80, 1.0, k * (1 + ember));
+        ctx.lights.add(this.x, this.y + 0.55, this.z, 7.5, 1.0, 0.55, 0.22, k * (1 + ember));
 
         // ---- frost spray ---------------------------------------------------
         if (this.t < PLANT_TIME + 0.4) this._frost(dt);

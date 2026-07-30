@@ -181,13 +181,13 @@ export class Sweep {
         // crest. Below about 0.4 it stops reading as slush and starts reading as
         // a glass sculpture; above about 0.6 the water disappears entirely and
         // it is just a snow berm that happens to be moving.
-        water.setParams(s, PROFILE_SHEET, 0.48, clamp01(env * 1.4), COLS);
+        water.setParams(s, PROFILE_SHEET, 0.74, clamp01(env * 1.4), COLS);
 
         // Light rides the middle of the crest, low, so it grazes the channel it
         // is cutting rather than lighting it from above.
         ctx.lights.add(
             px, py + height * 0.55, pz,
-            9.5, 0.42, 0.74, 1.0, 13.0 * env
+            9.5, 1.0, 0.70, 0.38, 13.0 * env
         );
 
         this._plough(travelled, env);

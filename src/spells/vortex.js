@@ -102,7 +102,7 @@ export class Vortex {
 
         ctx.lights.add(
             this.x, ctx.terrain.heightAt(this.x, this.z) + 1.3, this.z,
-            9.0, 0.46, 0.74, 1.0, 9.0 * env
+            9.0, 1.0, 0.72, 0.40, 9.0 * env
         );
     }
 

@@ -34,6 +34,8 @@ import { S } from "../core/settings.js";
 const SPINDRIFT_RATE = 95;
 /** Grains per second of airborne dust at full wind. */
 const DUST_RATE = 30;
+/** Large slow dust veils per second — the mid-distance murk of the storm. */
+const VEIL_RATE = 8;
 
 /** How far up/down-wind of the player the emitters sit, metres. */
 const UPWIND = 26;
@@ -53,6 +55,7 @@ export class Wind {
         /** Fractional-grain accumulators, so low rates still emit correctly. */
         this._spinAcc = 0;
         this._dustAcc = 0;
+        this._veilAcc = 0;
         this._gust = 0.5;
     }
 
@@ -141,5 +144,37 @@ export class Wind {
                 0.7
             );
         }
+
+        // ---- storm veils -------------------------------------------------
+        // The mid-distance murk: big, slow, long-lived sheets drifting through
+        // 20-70 m out. Individually they are just large soft grains; together
+        // they are the layer that makes the far dunes come and go the way the
+        // reference stills do. Emitted in a full ring rather than only upwind,
+        // so the horizon is veiled in every direction, not just one.
+        this._veilAcc += VEIL_RATE * (0.5 + env * 0.7) * dt;
+        let nVeil = this._veilAcc | 0;
+        this._veilAcc -= nVeil;
+        if (nVeil > 10) nVeil = 10;
+        for (let i = 0; i < nVeil; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const r = 20 + Math.random() * 50;
+            const x = focus.x + Math.cos(ang) * r;
+            const z = focus.z + Math.sin(ang) * r;
+            const gy = this.terrain.heightAt(x, z);
+            const sp = 2.5 + env * 3.5;
+            this.spray.emit(
+                x, gy + 1.0 + Math.random() * 3.2, z,
+                wx * sp, 0.2 + Math.random() * 0.5, wz * sp,
+                0.16 + Math.random() * 0.18,
+                3.5 + Math.random() * 2.5,
+                0,
+                0.35
+            );
+        }
+    }
+
+    /** Current storm envelope 0..~1.25 — the game reads this for screen streaks. */
+    get gust() {
+        return this._gust;
     }
 }

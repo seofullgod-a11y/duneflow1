@@ -48,7 +48,7 @@ const HP_REGEN = 0.018;
 const BOSS_RANGE = 170;
 
 /** Plate names for keyboard casts, indexed by spell key. */
-const PLATES = [null, "Slush Sweep", "Water Ribbon", "Sand Bloom", "Crystallise Spice", "Sand Vortex"];
+const PLATES = [null, "Sand Sweep", "Sand Ribbon", "Dune Burst", "Crystallise Spice", "Sand Vortex"];
 
 export class Game {
     /**
@@ -209,6 +209,11 @@ export class Game {
         this.spiceField.update(dt, ch.position);
         this.worm.update(dt);
         this.wind.update(dt, ch.position);
+
+        // Storm streaks: a faint constant screen-space wind smear whose weight
+        // rides the gust envelope, so squalls visibly rake the frame. main.js
+        // takes the max of this and the surf streak.
+        this.stormStreak01 = 0.05 + this.wind.gust * 0.11;
 
         // ---- hud ----------------------------------------------------------
         this.hud.setHp(Math.max(0, this.hp));

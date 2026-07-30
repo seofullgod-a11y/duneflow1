@@ -29,45 +29,86 @@ const CSS = `
 }
 
 /* ---- status bars, top-left --------------------------------------------- */
+/* Layered soulslike bars: a dark recessed channel inside a double bronze
+   frame, a diamond finial capping the left end, a glass highlight across the
+   top of the fill, and a pale damage-ghost that lags the HP. Length encodes
+   importance: HP longest, stamina shorter, wormsign shortest. */
 #hud-bars {
     position: absolute;
-    top: 26px;
-    left: 28px;
-    width: min(360px, 40vw);
+    top: 28px;
+    left: 34px;
+    width: min(380px, 42vw);
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.55));
 }
 .hbar {
     position: relative;
-    height: 10px;
-    margin-bottom: 7px;
-    background: rgba(10, 6, 5, 0.72);
-    border: 1px solid rgba(200, 165, 110, 0.55);
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.6), inset 0 1px 2px rgba(0,0,0,0.8);
+    height: 12px;
+    margin-bottom: 9px;
+    background:
+        linear-gradient(180deg, rgba(4,2,2,0.92), rgba(18,11,8,0.88));
+    border: 1px solid rgba(214, 178, 122, 0.75);
+    box-shadow:
+        0 0 0 1px rgba(0,0,0,0.85),
+        0 0 0 2px rgba(120, 92, 55, 0.35),
+        inset 0 2px 3px rgba(0,0,0,0.9),
+        inset 0 -1px 1px rgba(214,178,122,0.12);
+    border-radius: 1px;
+}
+/* the diamond finial on the left end */
+.hbar::before {
+    content: "";
+    position: absolute;
+    left: -7px;
+    top: 50%;
+    width: 9px;
+    height: 9px;
+    transform: translateY(-50%) rotate(45deg);
+    background: linear-gradient(135deg, #e8cf9a 0%, #a97f43 55%, #6f4d24 100%);
+    border: 1px solid rgba(0,0,0,0.8);
+    box-shadow: 0 0 4px rgba(232, 163, 79, 0.4);
+}
+/* glass highlight along the top of every fill */
+.hbar::after {
+    content: "";
+    position: absolute;
+    inset: 2px 2px auto 2px;
+    height: 3px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0));
+    pointer-events: none;
+    z-index: 2;
 }
 .hbar .fill {
     position: absolute;
-    inset: 1px auto 1px 1px;
+    inset: 2px auto 2px 2px;
     width: 100%;
     transition: width 160ms ease-out;
+    z-index: 1;
 }
 .hbar.hp .fill {
-    background: linear-gradient(180deg, #c8443a 0%, #8e2620 55%, #6e1a16 100%);
+    background: linear-gradient(180deg,
+        #e06a55 0%, #c03a2e 34%, #8e2620 68%, #611512 100%);
+    box-shadow: 0 0 8px rgba(200, 68, 58, 0.35);
 }
+.hbar.st { width: 84%; }
 .hbar.st .fill {
-    background: linear-gradient(180deg, #58a35c 0%, #37753d 55%, #285c2f 100%);
+    background: linear-gradient(180deg,
+        #7cc47e 0%, #4d9a54 34%, #37753d 68%, #234f2a 100%);
+    box-shadow: 0 0 8px rgba(88, 163, 92, 0.30);
 }
-.hbar.ws { height: 7px; width: 72%; }
+.hbar.ws { height: 9px; width: 58%; }
 .hbar.ws .fill {
-    background: linear-gradient(180deg, #e8a34f 0%, #b06a26 60%, #8a4d18 100%);
+    background: linear-gradient(180deg,
+        #f2c377 0%, #d68f3c 40%, #a3622a 72%, #7c4718 100%);
+    box-shadow: 0 0 8px rgba(232, 163, 79, 0.35);
 }
 /* damage ghost: a pale strip that lags the HP fill, the classic soulslike read */
 .hbar.hp .ghost {
     position: absolute;
-    inset: 1px auto 1px 1px;
+    inset: 2px auto 2px 2px;
     width: 100%;
-    background: rgba(240, 210, 160, 0.55);
+    background: rgba(240, 205, 150, 0.6);
     transition: width 900ms ease 250ms;
 }
-.hbar.hp .fill { z-index: 1; }
 
 /* ---- skill name plate, mid-left ---------------------------------------- */
 #hud-skill {

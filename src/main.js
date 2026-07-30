@@ -244,7 +244,7 @@ async function boot() {
         // passes derive from the camera. Must be after the rig has moved and
         // before anything reads `scene.getTransformMatrix()` — which the depth
         // prepass and the beauty pass both do.
-        post.update(dt, character.streak01, rig.distance);
+        post.update(dt, Math.max(character.streak01, game.stormStreak01 || 0), rig.distance);
         sky.update();
         sky.render(rig, time);
         shadows.update(rig.camera, sky.sunDir);
