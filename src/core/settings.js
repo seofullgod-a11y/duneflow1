@@ -26,7 +26,7 @@ export const S = {
     ambientBlue: 1.0, // strength of the cool shadow shift
 
     // ------------------------------------------------------------- atmosphere
-    fogDensity: 0.0105,
+    fogDensity: 0.0125,
     fogHeightFalloff: 0.045,
     fogStart: 24,
     aerialStrength: 1.2,
@@ -35,7 +35,7 @@ export const S = {
     // two align the sun rakes down every ridge, lights both flanks identically
     // and the fine structure reads as flat ground.
     windDirection: 42,
-    windStrength: 1.0,
+    windStrength: 1.35,
     /** Far-field mountain range on the skybox. */
     showMountains: true,
     /** Peak height of that range, metres. */

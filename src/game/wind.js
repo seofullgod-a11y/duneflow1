@@ -31,9 +31,9 @@
 import { S } from "../core/settings.js";
 
 /** Grains per second of spindrift at full wind, before the gust envelope. */
-const SPINDRIFT_RATE = 55;
+const SPINDRIFT_RATE = 95;
 /** Grains per second of airborne dust at full wind. */
-const DUST_RATE = 14;
+const DUST_RATE = 30;
 
 /** How far up/down-wind of the player the emitters sit, metres. */
 const UPWIND = 26;
@@ -66,16 +66,17 @@ export class Wind {
         const strength = S.windStrength;
         if (strength <= 0.001) return;
 
-        // ---- gust envelope ----------------------------------------------
-        // Three incommensurate sines so the wind never settles into an audible
-        // loop, biased to spend more time low than high — real wind is mostly
-        // lulls punctuated by gusts, not a steady blow.
+        // ---- storm envelope ---------------------------------------------
+        // A *permanent* storm: the base never drops below a real blow, and the
+        // three incommensurate sines ride on top of it as gust fronts — so the
+        // field is always streaming and the gusts read as squalls passing
+        // through, not as the wind switching on and off.
         const g =
-            0.45 +
-            0.30 * Math.sin(this._t * 0.23) +
-            0.18 * Math.sin(this._t * 0.61 + 1.7) +
-            0.10 * Math.sin(this._t * 1.30 + 4.2);
-        this._gust = Math.max(0, g);
+            0.80 +
+            0.22 * Math.sin(this._t * 0.23) +
+            0.14 * Math.sin(this._t * 0.61 + 1.7) +
+            0.09 * Math.sin(this._t * 1.30 + 4.2);
+        this._gust = Math.max(0.35, g);
         const env = this._gust * strength;
 
         // Wind vector. `windDirection` is a compass bearing, same convention as
@@ -91,7 +92,7 @@ export class Wind {
         this._spinAcc += SPINDRIFT_RATE * env * dt;
         let nSpin = this._spinAcc | 0;
         this._spinAcc -= nSpin;
-        if (nSpin > 40) nSpin = 40; // clamp a catch-up spike after a hitch
+        if (nSpin > 60) nSpin = 60; // clamp a catch-up spike after a hitch
         for (let i = 0; i < nSpin; i++) {
             // Start upwind of the player and off to a random side, so the
             // streamer crosses frame.
@@ -117,11 +118,11 @@ export class Wind {
         // ---- gust dust ---------------------------------------------------
         // Only the upper half of the envelope throws real airborne haze, so
         // between gusts the air genuinely clears.
-        const dustEnv = Math.max(0, env - 0.35);
+        const dustEnv = Math.max(0, env - 0.22);
         this._dustAcc += DUST_RATE * dustEnv * dt;
         let nDust = this._dustAcc | 0;
         this._dustAcc -= nDust;
-        if (nDust > 16) nDust = 16;
+        if (nDust > 24) nDust = 24;
         for (let i = 0; i < nDust; i++) {
             const along = -UPWIND + Math.random() * 12;
             const across = (Math.random() * 2 - 1) * SPREAD;
