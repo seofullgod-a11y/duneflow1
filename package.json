@@ -1,0 +1,30 @@
+{
+  "name": "duneflow",
+  "version": "1.0.0",
+  "description": "DUNEFLOW - desert survival tech demo (Babylon.js / WebGPU)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "serve -s dist -l ${PORT:-4173}"
+  },
+  "keywords": [
+    "webgpu",
+    "babylonjs",
+    "wgsl",
+    "snow",
+    "terrain",
+    "procedural",
+    "graphics"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@babylonjs/core": "^9.18.0",
+    "@babylonjs/materials": "^9.18.0",
+    "serve": "^14.2.4"
+  },
+  "devDependencies": {
+    "vite": "^8.1.5"
+  }
+}
