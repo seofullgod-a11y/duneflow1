@@ -23,6 +23,10 @@ export const input = {
 
     /** @type {number} 0 = none, else 1..5 — set on keydown, cleared each frame */
     spellPressed: 0,
+    /** Space, edge-triggered: the dash. Cleared in endFrame. */
+    dashPressed: false,
+    /** KeyU, edge-triggered: the trade panel. Cleared in endFrame. */
+    tradePressed: false,
     /** @type {boolean} spell 2 (Ribbon) is a held cast */
     spellHeld2: false,
 
@@ -107,6 +111,12 @@ export function initInput(canvas, hooks) {
         if (e.repeat) return;
         keys[e.code] = true;
 
+        if (e.code === "Space") {
+            e.preventDefault(); // keep the page from scrolling
+            input.dashPressed = true;
+        }
+        if (e.code === "KeyU") input.tradePressed = true;
+
         const n = SPELL_KEYS[e.code];
         if (n) {
             input.spellPressed = n;
@@ -180,6 +190,8 @@ export function endFrame() {
     input.lookY = 0;
     input.zoomDelta = 0;
     input.spellPressed = 0;
+    input.dashPressed = false;
+    input.tradePressed = false;
 }
 
 export function isDown(code) {

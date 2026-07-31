@@ -14,7 +14,7 @@ import { Scene } from "@babylonjs/core/scene";
 import { Vector3, Color3, Color4 } from "@babylonjs/core/Maths/math";
 
 import { registerShaders } from "./shaders/registry.js";
-import { S, onChange } from "./core/settings.js";
+import { S, onChange, set as setSetting, applyPreset } from "./core/settings.js";
 import {
     sample, checkSpike, stats, mark, installDrawCounter, endFrameDraws,
 } from "./core/perf.js";
@@ -71,6 +71,15 @@ async function boot() {
     if (!filterable) {
         console.warn("[snowflow] float32-filterable unavailable; height will step");
     }
+
+    // Apple integrated GPUs run every fullscreen pass here at half the rate of
+    // a discrete card, and the default preset was tuned on a discrete card.
+    // Starting them one tier down is the difference between a first impression
+    // of "smooth" and one of "broken" — and the overlay is one keypress away
+    // for anyone who wants the SSR back.
+    const isMac = /Mac/i.test(navigator.platform || "") ||
+        /Macintosh/i.test(navigator.userAgent || "");
+    if (isMac && S.preset === "ultra") applyPreset("performance");
 
     const applyScale = () => engine.setHardwareScalingLevel(1 / S.resolutionScale);
     applyScale();
@@ -210,6 +219,34 @@ async function boot() {
     let prev = performance.now();
     let time = 0;
 
+    // ---- dynamic resolution -------------------------------------------
+    // The frame delta is the controller signal: under vsync it sits at the
+    // refresh period, and the moment the GPU falls behind, rAF stretches and
+    // the average climbs. Steps are asymmetric — down fast, up slow — and on
+    // cooldowns, because every step reallocates the whole post chain and a
+    // controller that oscillates costs more than the resolution it saves.
+    let frameAvg = 16.7;
+    let scaleCooldown = 3; // settle time before the first adjustment
+    const SCALE_MIN = 0.55;
+
+    function autoScale(dtMs, dt) {
+        frameAvg = frameAvg * 0.94 + dtMs * 0.06;
+        scaleCooldown -= dt;
+        if (!S.autoResolution || scaleCooldown > 0) return;
+        const cap = 1.0;
+        if (frameAvg > 24 && S.resolutionScale > SCALE_MIN + 0.001) {
+            setSetting("resolutionScale",
+                Math.max(SCALE_MIN, Math.round((S.resolutionScale - 0.1) * 20) / 20));
+            post.resetHistory(); // the TAA history is the wrong size now
+            scaleCooldown = 1.5;
+        } else if (frameAvg < 13.5 && S.resolutionScale < cap - 0.001) {
+            setSetting("resolutionScale",
+                Math.min(cap, Math.round((S.resolutionScale + 0.05) * 20) / 20));
+            post.resetHistory();
+            scaleCooldown = 3.0;
+        }
+    }
+
     engine.runRenderLoop(() => {
         const now = performance.now();
         let dtMs = now - prev;
@@ -219,6 +256,7 @@ async function boot() {
         time += dt;
 
         pollInput();
+        autoScale(dtMs, dt);
 
         // Per-system CPU timing. Babylon's WebGPU timestamp queries are
         // whole-frame, so the GPU row is a total and these are not subdivisions

@@ -87,6 +87,9 @@ export class WormSystem {
 
         /** 0..1 — the wormsign meter. */
         this.noise = 0;
+        /** Scales how fast movement feeds the meter. The Quiet Steps upgrade
+         *  lowers it; nothing else writes it. */
+        this.noiseMul = 1;
         this.state = WORM_IDLE;
 
         // Worm body state while hunting.
@@ -119,7 +122,7 @@ export class WormSystem {
             } else if (ch.speed > 0.4) {
                 gain = NOISE_WALK;
             }
-            this.noise += gain * dt;
+            this.noise += gain * dt * this.noiseMul;
         }
         this.noise -= NOISE_DECAY * dt * (ch.speed < 0.4 ? 1.6 : 1.0);
         this.noise = Math.min(1, Math.max(0, this.noise));

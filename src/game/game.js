@@ -50,6 +50,29 @@ const HP_REGEN = 0.018;
 /** Worm spawn distance ceiling — normalises the boss bar's proximity fill. */
 const BOSS_RANGE = 170;
 
+/** The dash: an impulse along the move direction. */
+const DASH_SPEED = 13.0;
+const DASH_COST = 0.24;
+/** Seconds of worm-proof grace after a dash — the dodge window. */
+const DASH_IFRAMES = 0.55;
+/** Spice paid out the first time a landmark is walked into. */
+const DISCOVER_REWARD = 25;
+
+/**
+ * The trade. Four permanent upgrades, bought with carried spice at any time
+ * (the fiction: a sietch trader's debt-marks, honoured anywhere). Owned
+ * upgrades persist in localStorage so a death — or a browser refresh — does
+ * not erase progression; the carried spice persists with them so dying with a
+ * full purse costs half of it, exactly what the death rule already says.
+ */
+const UPGRADES = [
+    { id: "lungs", key: 1, name: "LUNGS OF THE SIETCH", desc: "stamina drains a third slower", cost: 60 },
+    { id: "blood", key: 2, name: "STILL BLOOD", desc: "wounds close twice as fast", cost: 80 },
+    { id: "steps", key: 3, name: "QUIET STEPS", desc: "movement draws the worm far less", cost: 100 },
+    { id: "wind", key: 4, name: "SECOND WIND", desc: "dashing costs half the breath", cost: 120 },
+];
+const SAVE_KEY = "duneflow.save.v1";
+
 /** Plate names for keyboard casts, indexed by spell key. */
 const PLATES = [null, "Sand Sweep", "Sand Ribbon", "Dune Burst", "Crystallise Spice", "Sand Vortex"];
 
@@ -100,8 +123,17 @@ export class Game {
         // The named map. See landmarks.js — it mirrors landform.wgsl.
         this.landmarks = new Landmarks();
 
+        /** @type {Record<string, boolean>} */
+        this.upgrades = {};
+        this._loadSave();
+        this.worm.noiseMul = this.upgrades.steps ? 0.55 : 1.0;
+
+        /** Seconds of dodge grace remaining. */
+        this._iframes = 0;
+        this._dashCd = 0;
+
         this._attacking = false;
-        this.hud.setSpice(0);
+        this.hud.setSpice(this.spice);
         this.hud.setHp(1);
         this.hud.setStamina(1);
 
@@ -119,6 +151,92 @@ export class Game {
         }
         this._storyT = 0;
         this._storyBeat = 0;
+    }
+
+    _loadSave() {
+        try {
+            const raw = localStorage.getItem(SAVE_KEY);
+            if (!raw) return;
+            const d = JSON.parse(raw);
+            if (d && typeof d === "object") {
+                this.upgrades = d.upgrades || {};
+                this.spice = Math.max(0, d.spice | 0);
+                for (const id of d.found || []) this.landmarks.found.add(id);
+            }
+        } catch (e) {
+            // Private windows throw on localStorage; the game just starts fresh.
+        }
+    }
+
+    _save() {
+        try {
+            localStorage.setItem(SAVE_KEY, JSON.stringify({
+                upgrades: this.upgrades,
+                spice: this.spice,
+                found: Array.from(this.landmarks.found),
+            }));
+        } catch (e) { /* see above */ }
+    }
+
+    _buy(id) {
+        const u = UPGRADES.find((x) => x.id === id);
+        if (!u || this.upgrades[id] || this.spice < u.cost) return;
+        this.spice -= u.cost;
+        this.upgrades[id] = true;
+        if (id === "steps") this.worm.noiseMul = 0.55;
+        this.hud.setSpice(this.spice);
+        this.hud.toast(u.name.toLowerCase(), "the trade is honoured", 2600);
+        this._save();
+        this._openTrade(); // re-render with the new state
+    }
+
+    _openTrade() {
+        this.hud.tradeShow(
+            UPGRADES.map((u) => ({ ...u, owned: !!this.upgrades[u.id] })),
+            this.spice,
+            (id) => this._buy(id)
+        );
+    }
+
+    /** The dash: a burst along the input direction, or straight ahead. */
+    _dash() {
+        if (this._dashCd > 0 || this.winded) return;
+        const cost = DASH_COST * (this.upgrades.wind ? 0.5 : 1.0);
+        if (this.stamina < cost) return;
+        this.stamina -= cost;
+
+        const ch = this.ctx.controller;
+        // Along the current velocity if moving, else along the facing — a
+        // standing dash is a dodge, a moving dash is a lunge, and while surfing
+        // it is a straight speed boost.
+        let dx = ch.velocity.x, dz = ch.velocity.z;
+        const sp = Math.hypot(dx, dz);
+        if (sp > 0.5) { dx /= sp; dz /= sp; }
+        else { dx = Math.sin(ch.facing); dz = Math.cos(ch.facing); }
+        ch.velocity.x += dx * DASH_SPEED;
+        ch.velocity.z += dz * DASH_SPEED;
+
+        this._iframes = DASH_IFRAMES;
+        this._dashCd = 0.55;
+        this.ctx.rig.addTrauma(0.10);
+        // The dash kicks up a burst of sand where it started — a dozen grains
+        // thrown back against the lunge, plus a couple of clods.
+        for (let i = 0; i < 14; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.random();
+            this.ctx.spray.emit(
+                ch.position.x + Math.cos(a) * 0.3,
+                ch.position.y + 0.15 + Math.random() * 0.3,
+                ch.position.z + Math.sin(a) * 0.3,
+                -dx * (2.0 + r * 3.0) + Math.cos(a) * 1.2,
+                1.2 + Math.random() * 1.8,
+                -dz * (2.0 + r * 3.0) + Math.sin(a) * 1.2,
+                0.05 + Math.random() * 0.06,
+                0.5 + Math.random() * 0.4,
+                i < 3 ? 1 : 0,
+                1.4
+            );
+        }
     }
 
     /** The scripted trickle of the opening. */
@@ -143,6 +261,10 @@ export class Game {
             this.hud.toast("harvest the spice",
                 "the glittering blows \u00b7 speed draws the worm", 5200);
         }, 3800);
+        setTimeout(() => {
+            this.hud.toast("space to dash \u00b7 u to trade",
+                "spice buys permanent strength", 5200);
+        }, 9400);
         this.ctx.rig.addTrauma(0.25);
     }
 
@@ -165,12 +287,19 @@ export class Game {
         } else if (type === "lost") {
             this.hud.toast("the worm passes", "it has lost your trail");
         } else if (type === "attack") {
+            if (this._iframes > 0) {
+                // Dodged. The strike lands where you were.
+                this.hud.toast("dodged", "shai-hulud strikes sand", 2400);
+                this.ctx.rig.addTrauma(0.30);
+                return;
+            }
             this.hp -= HP_WORM_HIT;
             this.ctx.post.resetHistory();
             if (this.hp > 0) {
                 const lost = Math.ceil(this.spice / 2);
                 this.spice -= lost;
                 this.hud.setSpice(this.spice);
+                this._save();
                 this.hud.toast(
                     "shai-hulud",
                     lost > 0 ? "thrown clear \u00b7 " + lost + " spice lost" : "thrown clear",
@@ -188,6 +317,7 @@ export class Game {
         const ch = this.ctx.controller;
         const lost = Math.ceil(this.spice / 2);
         this.spice -= lost;
+        this._save();
 
         setTimeout(() => {
             ch.position.set(0, 0, 8);
@@ -221,6 +351,28 @@ export class Game {
         }
         const underground = this.phase === "canyon";
 
+        // ---- the trade -----------------------------------------------------
+        if (input.tradePressed) {
+            if (this.hud.tradeOpen) this.hud.tradeHide();
+            else this._openTrade();
+        }
+        if (this.hud.tradeOpen) {
+            // Number keys buy instead of casting while the panel is up. The
+            // spell dispatch runs after this, so zeroing the field here is all
+            // the suppression needed.
+            const n = input.spellPressed;
+            if (n >= 1 && n <= 4) {
+                const u = UPGRADES.find((x) => x.key === n);
+                if (u) this._buy(u.id);
+            }
+            input.spellPressed = 0;
+        }
+
+        // ---- the dash ------------------------------------------------------
+        this._dashCd = Math.max(0, this._dashCd - dt);
+        this._iframes = Math.max(0, this._iframes - dt);
+        if (input.dashPressed && !this.hud.tradeOpen) this._dash();
+
         // ---- keyboard cast plate (buttons report through onCast) ---------
         // Runs before the spell dispatch consumes the field, so both input
         // paths land on the same plate.
@@ -231,8 +383,9 @@ export class Game {
         // ---- stamina ------------------------------------------------------
         const surfing = ch.surf > 0.5;
         const sprinting = input.sprint && ch.speed > 3.0 && !surfing;
-        if (surfing) this.stamina -= ST_SURF * dt;
-        else if (sprinting) this.stamina -= ST_SPRINT * dt;
+        const lungs = this.upgrades.lungs ? 0.67 : 1.0;
+        if (surfing) this.stamina -= ST_SURF * lungs * dt;
+        else if (sprinting) this.stamina -= ST_SPRINT * lungs * dt;
         else this.stamina += ST_REGEN * dt * (ch.speed < 0.4 ? 1.25 : 1.0);
         this.stamina = Math.min(1, Math.max(0, this.stamina));
 
@@ -251,7 +404,7 @@ export class Game {
         }
 
         // ---- hp -----------------------------------------------------------
-        this.hp = Math.min(1, this.hp + HP_REGEN * dt);
+        this.hp = Math.min(1, this.hp + HP_REGEN * (this.upgrades.blood ? 2.0 : 1.0) * dt);
         if (this.hp <= 0 && !this._dead) this._die();
 
         // ---- systems (asleep underground) --------------------------------
@@ -272,6 +425,13 @@ export class Game {
         const cp = this.landmarks.update(ch.position, ch.facing, (l) => {
             this.hud.discover(l.name, l.sub);
             this.ctx.rig.addTrauma(0.06);
+            // Exploration pays. Not much — the spice field is still the
+            // economy — but enough that walking toward an unnamed pip on the
+            // tape is never a wasted trip.
+            this.spice += DISCOVER_REWARD;
+            this.hud.setSpice(this.spice);
+            this.hud.toast("+" + DISCOVER_REWARD + " spice", "for the finding", 2200);
+            this._save();
         });
         const near = this.landmarks.nearest;
         this.hud.setCompass(

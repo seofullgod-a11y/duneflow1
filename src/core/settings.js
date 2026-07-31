@@ -13,6 +13,13 @@ export const S = {
     // ---------------------------------------------------------------- quality
     preset: "ultra",
     resolutionScale: 1.0,
+    /**
+     * Dynamic resolution. When the frame runs long the render scale steps
+     * down, and steps back up when there is headroom. The single most
+     * effective lever on integrated GPUs, because every fullscreen pass in
+     * the chain — terrain material, prepass, TAA, SSR, DoF — is pixel-bound.
+     */
+    autoResolution: true,
 
     // ------------------------------------------------------------------- sun
     sunAzimuth: 118, // degrees, compass bearing of the sun
@@ -205,6 +212,7 @@ export const SCHEMA = [
             { k: "wireframe", l: "Wireframe", t: "b" },
             { k: "freezeTime", l: "Freeze time", t: "b" },
             { k: "resolutionScale", l: "Resolution", t: "f", min: 0.5, max: 1.5, step: 0.05 },
+            { k: "autoResolution", l: "Auto resolution", t: "b" },
             {
                 k: "debugView", l: "Debug view", t: "e",
                 opts: ["beauty", "deform", "normals", "depth", "cascades", "footprint",
@@ -221,6 +229,15 @@ export const PRESETS = {
     balanced: {
         deformResolution: 1024, resolutionScale: 0.85,
         ssr: false, dof: false,
+    },
+    // The integrated-GPU tier. SSR and DoF are the two most expensive
+    // fullscreen passes and neither survives a small screen anyway; the shafts
+    // are a raymarch; sharpen and grain are two more fullscreen reads the frame
+    // can live without. TAA stays — it is the only anti-aliasing there is.
+    performance: {
+        deformResolution: 1024, resolutionScale: 0.7,
+        ssr: false, dof: false, showLightShafts: false,
+        sharpen: false, grain: false,
     },
 };
 

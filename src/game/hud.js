@@ -295,6 +295,59 @@ const CSS = `
     color: var(--frost-dim);
 }
 
+/* ---- trade panel --------------------------------------------------------- */
+/* The sietch trade: spend spice on permanent upgrades. Keyboard-first (U to
+   open, 1-4 to buy) because the pointer is usually locked; the rows are still
+   clickable for touch. */
+#hud-trade {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 340px;
+    padding: 18px 22px 14px;
+    background: rgba(10, 6, 5, 0.90);
+    border: 1px solid rgba(200, 165, 110, 0.55);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.8), 0 8px 40px rgba(0,0,0,0.6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+}
+#hud-trade.show { opacity: 1; pointer-events: auto; }
+#hud-trade h3 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: normal;
+    letter-spacing: 0.30em;
+    text-indent: 0.30em;
+    text-align: center;
+    color: #e6c98a;
+}
+#hud-trade .hint {
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: var(--frost-dim);
+    margin-bottom: 12px;
+}
+#hud-trade .row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 7px 6px;
+    border-top: 1px solid rgba(200, 165, 110, 0.18);
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+#hud-trade .row:hover { background: rgba(200, 165, 110, 0.08); }
+#hud-trade .row .key { color: var(--accent); font-size: 12px; width: 1.2em; }
+#hud-trade .row .name { font-size: 13px; letter-spacing: 0.10em; }
+#hud-trade .row .desc { flex: 1; font-size: 9px; letter-spacing: 0.06em; color: var(--frost-dim); }
+#hud-trade .row .cost { font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
+#hud-trade .row.owned { opacity: 0.42; cursor: default; }
+#hud-trade .row.owned .cost { color: var(--frost-dim); }
+#hud-trade .row.poor .cost { color: #b8452f; }
+
 /* ---- death card --------------------------------------------------------- */
 #hud-death {
     position: absolute;
@@ -346,6 +399,7 @@ export class Hud {
                 <div class="title"></div>
                 <div class="rule b"></div>
             </div>
+            <div id="hud-trade"></div>
             <div id="hud-death"></div>
         `;
         document.body.appendChild(root);
@@ -372,6 +426,9 @@ export class Hud {
         this._foundTitle = this._foundEl.querySelector(".title");
         this._foundTimer = 0;
         this._lastPlace = null;
+        this._tradeEl = document.getElementById("hud-trade");
+        this._tradeOpen = false;
+        this._onBuy = null;
 
         this._toastTimer = 0;
         this._skillTimer = 0;
@@ -561,6 +618,44 @@ export class Hud {
             this._placeEl.textContent = place || "";
         }
         this._placeEl.classList.toggle("show", !!place);
+    }
+
+    /**
+     * The trade panel.
+     * @param {Array<{id:string,key:number,name:string,desc:string,cost:number,owned:boolean}>} items
+     * @param {number} spice what the player is carrying
+     * @param {(id:string) => void} onBuy
+     */
+    tradeShow(items, spice, onBuy) {
+        this._onBuy = onBuy;
+        this._tradeOpen = true;
+        let html = `<h3>SIETCH TRADE</h3>
+            <div class="hint">press the number to buy \u00b7 U to close</div>`;
+        for (const it of items) {
+            const cls = it.owned ? "row owned" : (spice < it.cost ? "row poor" : "row");
+            html += `<div class="${cls}" data-id="${it.id}">
+                <span class="key">${it.key}</span>
+                <span class="name">${it.name}</span>
+                <span class="desc">${it.desc}</span>
+                <span class="cost">${it.owned ? "\u2713" : "\u2726 " + it.cost}</span>
+            </div>`;
+        }
+        this._tradeEl.innerHTML = html;
+        this._tradeEl.classList.add("show");
+        for (const row of this._tradeEl.querySelectorAll(".row")) {
+            row.addEventListener("click", () => {
+                if (!row.classList.contains("owned")) this._onBuy?.(row.dataset.id);
+            });
+        }
+    }
+
+    tradeHide() {
+        this._tradeOpen = false;
+        this._tradeEl.classList.remove("show");
+    }
+
+    get tradeOpen() {
+        return this._tradeOpen;
     }
 
     /** The discovery card. Bigger than a toast, and rarer. */
