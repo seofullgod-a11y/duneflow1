@@ -99,16 +99,7 @@ export class Game {
         this.hud.setHp(1);
         this.hud.setStamina(1);
 
-        // The opening: the spawn canyon, carved directly into the terrain
-        // (see terrainMacro in lib/terrain.wgsl). Walk the channel to z ~ +6
-        // and the erg opens. Mirror of the shader's centreline math below.
-        this.phase = "canyon";
-        {
-            const z0 = -60;
-            ch.position.x = Math.sin(z0 * 0.09) * 4.0;
-            ch.position.z = z0;
-            ch.position.y = ctx.terrain.heightAt(ch.position.x, z0);
-        }
+        this.phase = "erg";
         this._storyT = 0;
         this._storyBeat = 0;
     }
@@ -199,21 +190,7 @@ export class Game {
     update(dt) {
         const ch = this.ctx.controller;
 
-        // ---- phase: the spawn canyon -------------------------------------
-        if (this.phase === "canyon") {
-            this._story(dt);
-            // Keep the walk inside the channel: same centreline as the shader.
-            const sway = Math.sin(ch.position.z * 0.09) * 4.0;
-            const half = 2.4;
-            if (ch.position.z < 6) {
-                if (ch.position.x < sway - half) ch.position.x = sway - half;
-                if (ch.position.x > sway + half) ch.position.x = sway + half;
-                if (ch.position.z < -78) ch.position.z = -78;
-            } else {
-                this._exitCave();
-            }
-        }
-        const underground = this.phase === "canyon";
+        const underground = false;
 
         // ---- keyboard cast plate (buttons report through onCast) ---------
         // Runs before the spell dispatch consumes the field, so both input
