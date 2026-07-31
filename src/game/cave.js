@@ -26,6 +26,13 @@
  * `isOutside(pos)` to detect the exit crossing.
  */
 
+// Tree-shaken Babylon does not pull the default-material shaders in by
+// itself; without these side-effect imports, StandardMaterial throws at first
+// draw on WebGPU — which kills the whole render loop and blacks the screen.
+import "@babylonjs/core/ShadersWGSL/default.vertex.js";
+import "@babylonjs/core/ShadersWGSL/default.fragment.js";
+import "@babylonjs/core/Shaders/default.vertex.js";
+import "@babylonjs/core/Shaders/default.fragment.js";
 import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { CreatePolyhedron } from "@babylonjs/core/Meshes/Builders/polyhedronBuilder.js";
@@ -69,7 +76,7 @@ export class Cave {
         const rock = new StandardMaterial("caveRock", scene);
         rock.diffuseColor = new Color3(0.34, 0.145, 0.095);
         rock.specularColor = new Color3(0.015, 0.01, 0.008);
-        rock.emissiveColor = new Color3(0.022, 0.009, 0.006);
+        rock.emissiveColor = new Color3(0.085, 0.034, 0.024);
         rock.backFaceCulling = false;
 
         // ---- tunnel mesh --------------------------------------------------

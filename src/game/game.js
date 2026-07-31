@@ -103,13 +103,21 @@ export class Game {
         // ---- the Deep Shelter opening --------------------------------
         // The game starts underground; the open-erg systems (worm, spice,
         // storm) hold their breath until the mouth is crossed.
-        this.cave = new Cave(ctx.scene, ctx.terrain);
-        /** "cave" until the mouth is crossed, then "erg". */
-        this.phase = "cave";
-        const ch = ctx.controller;
-        ch.position.x = SPAWN.x;
-        ch.position.z = SPAWN.z;
-        ch.position.y = ctx.terrain.heightAt(SPAWN.x, SPAWN.z);
+        // Guarded: the cave uses Babylon standard materials, a different
+        // path from the rest of the engine — if it fails on some browser, the
+        // game must fall back to opening on the dunes, never to a black screen.
+        this.cave = null;
+        this.phase = "erg";
+        try {
+            this.cave = new Cave(ctx.scene, ctx.terrain);
+            this.phase = "cave";
+            const ch0 = ctx.controller;
+            ch0.position.x = SPAWN.x;
+            ch0.position.z = SPAWN.z;
+            ch0.position.y = ctx.terrain.heightAt(SPAWN.x, SPAWN.z);
+        } catch (err) {
+            console.error("[game] cave failed, opening on the dunes:", err);
+        }
         this._storyT = 0;
         this._storyBeat = 0;
     }
