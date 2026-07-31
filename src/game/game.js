@@ -99,7 +99,15 @@ export class Game {
         this.hud.setHp(1);
         this.hud.setStamina(1);
 
-        this.phase = "erg";
+        // The spawn canyon opening. FIX: the controller is taken from ctx
+        // here — the earlier crash was an undeclared `ch` in this block.
+        this.phase = "canyon";
+        {
+            const c = ctx.controller;
+            c.position.x = Math.sin(-60 * 0.09) * 4.0;
+            c.position.z = -60;
+            c.position.y = ctx.terrain.heightAt(c.position.x, -60);
+        }
         this._storyT = 0;
         this._storyBeat = 0;
     }
@@ -190,7 +198,18 @@ export class Game {
     update(dt) {
         const ch = this.ctx.controller;
 
-        const underground = false;
+        if (this.phase === "canyon") {
+            this._story(dt);
+            const sway = Math.sin(ch.position.z * 0.09) * 4.0;
+            if (ch.position.z < 6) {
+                if (ch.position.x < sway - 2.4) ch.position.x = sway - 2.4;
+                if (ch.position.x > sway + 2.4) ch.position.x = sway + 2.4;
+                if (ch.position.z < -78) ch.position.z = -78;
+            } else {
+                this._exitCave();
+            }
+        }
+        const underground = this.phase === "canyon";
 
         // ---- keyboard cast plate (buttons report through onCast) ---------
         // Runs before the spell dispatch consumes the field, so both input

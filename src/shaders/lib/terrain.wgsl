@@ -61,6 +61,18 @@ fn terrainMacro(p: vec2f, w: f32, amp: f32) -> f32 {
     let shelter = clamp(0.5 - broad.x * 0.75, 0.15, 1.0);
     h += med.x * 2.9 * shelter;
 
+    // --- the spawn canyon: see game.js. Ascending smoothstep edges only.
+    let cz = p.y;
+    let inf = (1.0 - smoothstep(-6.0, 10.0, cz)) * smoothstep(-95.0, -70.0, cz);
+    if (inf > 0.001) {
+        let sway = sin(cz * 0.09) * 4.0;
+        let d = abs(p.x - sway);
+        let ridge = smoothstep(2.6, 6.5, d) * (1.0 - smoothstep(9.0, 18.0, d));
+        let floorCut = 1.0 - smoothstep(0.0, 3.2, d);
+        h = mix(h, h * 0.25, inf * floorCut);
+        h += inf * (20.0 * ridge - 1.5 * floorCut);
+    }
+
     return h * amp;
 }
 
