@@ -369,6 +369,12 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     if (deformBerm > 0.002) {
         let loose = clamp(deformBerm * 5.0, 0.0, 1.0);
         albedo = mix(albedo, vec3f(0.705, 0.590, 0.425), loose * 0.55);
+        roughness = mix(roughness, 0.78, loose * 0.7);
+        thickness = mix(thickness, 1.0, loose * 0.6);
+        // Broken sand has grain faces pointing everywhere, which is where the
+        // chunky granular read at a trail edge actually comes from.
+        let chunk = noise2(world.xz * 34.0) * 0.5 + 0.5;
+        albedo *= 1.0 - loose * 0.10 * chunk;
     }
 
     // DESERT grain: two scales of albedo mottle so the surface reads as sand,
@@ -379,12 +385,6 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
         let fine = noise2(world.xz * 31.0) * 0.5 + 0.5;
         albedo = mix(albedo, albedo * vec3f(1.07, 0.99, 0.88), (coarse - 0.5) * 0.9);
         albedo *= 0.93 + 0.13 * fine;
-        roughness = mix(roughness, 0.78, loose * 0.7);
-        thickness = mix(thickness, 1.0, loose * 0.6);
-        // Broken snow has crystal faces pointing everywhere, which is where the
-        // chunky granular read at a trail edge actually comes from.
-        let chunk = noise2(world.xz * 34.0) * 0.5 + 0.5;
-        albedo *= 1.0 - loose * 0.10 * chunk;
     }
 
     // Micro-occlusion in the grain crevices, and stronger in carved edges. See
