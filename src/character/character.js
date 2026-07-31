@@ -60,13 +60,13 @@ const PALETTE = [
     // snow palette (saturated enough to survive the warm sun multiply, dark
     // enough to silhouette against the field), but now the field is amber, so
     // the figure has to sit *cooler and darker* than the sand to read at all.
-    [0.052, 0.044, 0.036, 0.82], // 0 robe, near-black desert wool
-    [0.150, 0.118, 0.082, 0.76], // 1 mantle, dusty tan
-    [0.235, 0.212, 0.176, 0.82], // 2 collar lining, sun-bleached cream
+    [0.046, 0.041, 0.037, 0.86], // 0 cape, charcoal wool (ref: Tomographic still)
+    [0.118, 0.104, 0.088, 0.80], // 1 under-layer, grey-tan
+    [0.200, 0.184, 0.160, 0.82], // 2 collar lining, worn cream
     [0.048, 0.033, 0.024, 0.60], // 3 leather
-    [0.135, 0.095, 0.072, 0.85], // 4 skin, deep in shade
-    [0.290, 0.150, 0.052, 0.68], // 5 trim / scarf, spice amber
-    [0.560, 0.480, 0.370, 0.85], // 6 fur (unused by the fabric shader)
+    [0.190, 0.130, 0.092, 0.85], // 4 skin, a step lighter so the bare head reads
+    [0.135, 0.100, 0.062, 0.72], // 5 trim, muted leather-brown (ref has no bright accent)
+    [0.170, 0.140, 0.105, 0.85], // 6 fur, darkened toward hair
     [0.100, 0.100, 0.100, 0.80], // 7 spare
 ];
 
@@ -93,7 +93,7 @@ const PARAMS = [
 // ------------------------------------------------------- module-scope scratch
 const _droop = new Vector3();
 const _screen = new Vector2();
-const _furCol = new Color3(0.62, 0.545, 0.435); // DESERT: sun-bleached trim
+const _furCol = new Color3(0.21, 0.17, 0.13); // dark, hair-like trim per the reference
 
 export class Character {
     /**

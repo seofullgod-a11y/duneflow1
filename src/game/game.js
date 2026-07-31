@@ -32,7 +32,6 @@ import { SpiceField } from "./spice.js";
 import { WormSystem } from "./worm.js";
 import { Wind } from "./wind.js";
 import { Controls } from "./controls.js";
-import { Cave, SPAWN } from "./cave.js";
 
 /** Stamina drain / regen rates, bar-fractions per second. */
 const ST_SPRINT = 0.15;
@@ -100,23 +99,15 @@ export class Game {
         this.hud.setHp(1);
         this.hud.setStamina(1);
 
-        // ---- the Deep Shelter opening --------------------------------
-        // The game starts underground; the open-erg systems (worm, spice,
-        // storm) hold their breath until the mouth is crossed.
-        // Guarded: the cave uses Babylon standard materials, a different
-        // path from the rest of the engine — if it fails on some browser, the
-        // game must fall back to opening on the dunes, never to a black screen.
-        this.cave = null;
-        this.phase = "erg";
-        try {
-            this.cave = new Cave(ctx.scene, ctx.terrain);
-            this.phase = "cave";
-            const ch0 = ctx.controller;
-            ch0.position.x = SPAWN.x;
-            ch0.position.z = SPAWN.z;
-            ch0.position.y = ctx.terrain.heightAt(SPAWN.x, SPAWN.z);
-        } catch (err) {
-            console.error("[game] cave failed, opening on the dunes:", err);
+        // The opening: the spawn canyon, carved directly into the terrain
+        // (see terrainMacro in lib/terrain.wgsl). Walk the channel to z ~ +6
+        // and the erg opens. Mirror of the shader's centreline math below.
+        this.phase = "canyon";
+        {
+            const z0 = -60;
+            ch.position.x = Math.sin(z0 * 0.09) * 4.0;
+            ch.position.z = z0;
+            ch.position.y = ctx.terrain.heightAt(ch.position.x, z0);
         }
         this._storyT = 0;
         this._storyBeat = 0;
@@ -208,13 +199,21 @@ export class Game {
     update(dt) {
         const ch = this.ctx.controller;
 
-        // ---- phase: the Deep Shelter -------------------------------------
-        if (this.phase === "cave") {
+        // ---- phase: the spawn canyon -------------------------------------
+        if (this.phase === "canyon") {
             this._story(dt);
-            this.cave.constrain(ch.position);
-            if (this.cave.isOutside(ch.position)) this._exitCave();
+            // Keep the walk inside the channel: same centreline as the shader.
+            const sway = Math.sin(ch.position.z * 0.09) * 4.0;
+            const half = 2.4;
+            if (ch.position.z < 6) {
+                if (ch.position.x < sway - half) ch.position.x = sway - half;
+                if (ch.position.x > sway + half) ch.position.x = sway + half;
+                if (ch.position.z < -78) ch.position.z = -78;
+            } else {
+                this._exitCave();
+            }
         }
-        const underground = this.phase === "cave";
+        const underground = this.phase === "canyon";
 
         // ---- keyboard cast plate (buttons report through onCast) ---------
         // Runs before the spell dispatch consumes the field, so both input

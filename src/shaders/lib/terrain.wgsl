@@ -61,6 +61,25 @@ fn terrainMacro(p: vec2f, w: f32, amp: f32) -> f32 {
     let shelter = clamp(0.5 - broad.x * 0.75, 0.15, 1.0);
     h += med.x * 2.9 * shelter;
 
+    // --- the spawn canyon ---------------------------------------------------
+    // A slot canyon carved near the origin: the game opens at its shallow end
+    // and walks out onto the erg at z ~ +6. Carved HERE and nowhere else — the
+    // CPU heightfield reads the baked result of this function, so terrain,
+    // collision, shadows and footprints all agree for free, and the walls are
+    // shaded by the same sand material as everything else.
+    let cz = p.y;
+    let inf = smoothstep(10.0, -6.0, cz) * smoothstep(-95.0, -70.0, cz);
+    if (inf > 0.001) {
+        let sway = sin(cz * 0.09) * 4.0;   // the path snakes, hiding the mouth
+        let d = abs(p.x - sway);
+        // Wall ridges either side of the channel, fading back into dunes.
+        let ridge = smoothstep(2.6, 6.5, d) * (1.0 - smoothstep(9.0, 18.0, d));
+        // The floor: pressed down and calmed inside the channel.
+        let floorCut = 1.0 - smoothstep(0.0, 3.2, d);
+        h = mix(h, h * 0.25, inf * floorCut);
+        h += inf * (20.0 * ridge - 1.5 * floorCut);
+    }
+
     return h * amp;
 }
 
