@@ -23,8 +23,13 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
 
     // (height, authored-rock mask, canyon-floor mask) — one evaluation for all
     // three; see terrainMacroFull.
-    let macro = terrainMacroFull(p, uniforms.windAngle, uniforms.heightAmp);
-    var h = macro.x;
+    // `mf`, not `macro` — `macro` is a WGSL *reserved word*, and the failure
+    // mode of using one is the worst kind: this file alone stops compiling,
+    // the bake silently never runs, and the game renders a perfectly flat
+    // world with only the analytic fine ripples on it. Same trap as `patch`
+    // in terrainFineFiltered.
+    let mf = terrainMacroFull(p, uniforms.windAngle, uniforms.heightAmp);
+    var h = mf.x;
 
     // Rock displaces sand upward; sand then re-accumulates on the flatter faces,
     // which the material resolves from the mask in the aux bake.
@@ -32,14 +37,14 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // Suppressed inside canyon floors. A scattered outcrop dropped into a 6 m
     // corridor is a wall across the only route through it, and the player is
     // clamped to the centreline down there and cannot walk round it.
-    let open = 1.0 - smoothstep(0.15, 0.75, macro.z);
+    let open = 1.0 - smoothstep(0.15, 0.75, mf.z);
     let rock = rockField(p, uniforms.windAngle);
     h += rock.x * open;
 
     // The authored mask covers cliffs, caps and canyon lips; the outcrop mask
     // covers the scatter. Both feed the same channel — the material gates it by
     // slope on its own, so painting generously here costs nothing.
-    let mask = max(rock.y * open, macro.y);
+    let mask = max(rock.y * open, mf.y);
 
     fragmentOutputs.color = vec4f(h, mask, 0.0, 1.0);
 }
