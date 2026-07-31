@@ -68,7 +68,9 @@ fn terrainMacro(p: vec2f, w: f32, amp: f32) -> f32 {
     // collision, shadows and footprints all agree for free, and the walls are
     // shaded by the same sand material as everything else.
     let cz = p.y;
-    let inf = smoothstep(10.0, -6.0, cz) * smoothstep(-95.0, -70.0, cz);
+    // NOTE: WGSL validation rejects smoothstep with reversed edges, so the
+    // "fade out toward the mouth" is written as 1 - smoothstep(ascending).
+    let inf = (1.0 - smoothstep(-6.0, 10.0, cz)) * smoothstep(-95.0, -70.0, cz);
     if (inf > 0.001) {
         let sway = sin(cz * 0.09) * 4.0;   // the path snakes, hiding the mouth
         let d = abs(p.x - sway);
