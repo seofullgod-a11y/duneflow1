@@ -70,8 +70,28 @@ const UPGRADES = [
     { id: "blood", key: 2, name: "STILL BLOOD", desc: "wounds close twice as fast", cost: 80 },
     { id: "steps", key: 3, name: "QUIET STEPS", desc: "movement draws the worm far less", cost: 100 },
     { id: "wind", key: 4, name: "SECOND WIND", desc: "dashing costs half the breath", cost: 120 },
+    { id: "strider", key: 5, name: "DUNE STRIDER", desc: "walk and run a fifth faster", cost: 150 },
+    { id: "grip", key: 6, name: "MAKER'S GRIP", desc: "a worm strike takes half as much", cost: 180 },
 ];
 const SAVE_KEY = "duneflow.save.v1";
+
+/** Sietch Tabr shelter zone: centre and radius, mirroring landmarks.js. */
+const SIETCH = { x: -395, z: -195, r: 120 };
+
+/**
+ * Spice blows. Every few minutes the desert erupts somewhere: a column of
+ * thrown sand marks the site, an unnamed pip appears on the tape, and standing
+ * in the plume harvests spice fast — but the ground there is *loud*, so the
+ * blow is also a standing invitation to the worm. Risk against payout, on a
+ * timer, somewhere you have to travel to: it is the whole game in miniature,
+ * and it recurs on its own without a quest system to drive it.
+ */
+const BLOW_EVERY_MIN = 100;   // seconds between blows, minimum
+const BLOW_EVERY_MAX = 170;
+const BLOW_DURATION = 55;
+const BLOW_RADIUS = 22;       // harvest inside this
+const BLOW_RATE = 6;          // spice per second while inside
+const BLOW_NOISE = 0.055;     // extra wormsign per second while inside
 
 /** Plate names for keyboard casts, indexed by spell key. */
 const PLATES = [null, "Sand Sweep", "Sand Ribbon", "Dune Burst", "Crystallise Spice", "Sand Vortex"];
@@ -127,10 +147,17 @@ export class Game {
         this.upgrades = {};
         this._loadSave();
         this.worm.noiseMul = this.upgrades.steps ? 0.55 : 1.0;
+        ctx.controller.speedMul = this.upgrades.strider ? 1.2 : 1.0;
 
         /** Seconds of dodge grace remaining. */
         this._iframes = 0;
         this._dashCd = 0;
+
+        /** The spice blow event. */
+        this._blowTimer = 30 + Math.random() * 60; // first one comes early
+        this._blow = null; // {x, z, y, left, banked}
+        this._inSietch = false;
+        this._allFound = false;
 
         this._attacking = false;
         this.hud.setSpice(this.spice);
@@ -184,6 +211,7 @@ export class Game {
         this.spice -= u.cost;
         this.upgrades[id] = true;
         if (id === "steps") this.worm.noiseMul = 0.55;
+        if (id === "strider") this.ctx.controller.speedMul = 1.2;
         this.hud.setSpice(this.spice);
         this.hud.toast(u.name.toLowerCase(), "the trade is honoured", 2600);
         this._save();
@@ -236,6 +264,81 @@ export class Game {
                 i < 3 ? 1 : 0,
                 1.4
             );
+        }
+    }
+
+    /** Pick a blow site: away from the player, inside the play disc, on open
+     *  sand (a blow inside a canyon or against a cliff is invisible and the
+     *  march to it is a trap). Rejection sampling, a handful of tries. */
+    _spawnBlow() {
+        const ch = this.ctx.controller;
+        for (let i = 0; i < 10; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 180 + Math.random() * 260;
+            const x = ch.position.x + Math.cos(a) * r;
+            const z = ch.position.z + Math.sin(a) * r;
+            if (Math.hypot(x, z) > 540) continue;
+            const y = this.ctx.terrain.heightAt(x, z);
+            // Reject rock: sample the ground's tilt; a blow wants flats.
+            const y2 = this.ctx.terrain.heightAt(x + 8, z);
+            const y3 = this.ctx.terrain.heightAt(x, z + 8);
+            if (Math.abs(y2 - y) > 4 || Math.abs(y3 - y) > 4) continue;
+            this._blow = { x, z, y, left: BLOW_DURATION, banked: 0 };
+            this.landmarks.event = this._blow;
+            this.hud.toast("spice blow", "the desert erupts \u00b7 follow the tape", 5200);
+            return;
+        }
+        // No good site this time; try again soon.
+        this._blowTimer = 20;
+    }
+
+    /** @param {number} dt */
+    _updateBlow(dt) {
+        if (!this._blow) {
+            this._blowTimer -= dt;
+            if (this._blowTimer <= 0) this._spawnBlow();
+            return;
+        }
+        const b = this._blow;
+        b.left -= dt;
+
+        const ch = this.ctx.controller;
+        const d = Math.hypot(ch.position.x - b.x, ch.position.z - b.z);
+
+        // The eruption column. Cheap: a handful of grains a frame, only while
+        // anyone is close enough for them to resolve.
+        if (d < 420) {
+            const n = d < 120 ? 5 : 2;
+            for (let i = 0; i < n; i++) {
+                const a = Math.random() * Math.PI * 2;
+                const r = Math.random() * 4.0;
+                this.ctx.spray.emit(
+                    b.x + Math.cos(a) * r, b.y + Math.random() * 1.5, b.z + Math.sin(a) * r,
+                    Math.cos(a) * 1.5, 7.0 + Math.random() * 9.0, Math.sin(a) * 1.5,
+                    0.07 + Math.random() * 0.10, 1.6 + Math.random() * 1.2,
+                    Math.random() < 0.25 ? 1 : 0, 0.6
+                );
+            }
+        }
+
+        // Harvest — and the noise that comes with standing in an eruption.
+        if (d < BLOW_RADIUS) {
+            b.banked += BLOW_RATE * dt;
+            this.worm.noise = Math.min(1, this.worm.noise + BLOW_NOISE * dt);
+            if (b.banked >= 5) {
+                const take = Math.floor(b.banked);
+                b.banked -= take;
+                this.spice += take;
+                this.hud.setSpice(this.spice);
+            }
+        }
+
+        if (b.left <= 0) {
+            this._blow = null;
+            this.landmarks.event = null;
+            this._blowTimer = BLOW_EVERY_MIN + Math.random() * (BLOW_EVERY_MAX - BLOW_EVERY_MIN);
+            this._save();
+            this.hud.toast("the blow subsides", null, 2600);
         }
     }
 
@@ -293,7 +396,7 @@ export class Game {
                 this.ctx.rig.addTrauma(0.30);
                 return;
             }
-            this.hp -= HP_WORM_HIT;
+            this.hp -= HP_WORM_HIT * (this.upgrades.grip ? 0.5 : 1.0);
             this.ctx.post.resetHistory();
             if (this.hp > 0) {
                 const lost = Math.ceil(this.spice / 2);
@@ -361,7 +464,7 @@ export class Game {
             // spell dispatch runs after this, so zeroing the field here is all
             // the suppression needed.
             const n = input.spellPressed;
-            if (n >= 1 && n <= 4) {
+            if (n >= 1 && n <= 6) {
                 const u = UPGRADES.find((x) => x.key === n);
                 if (u) this._buy(u.id);
             }
@@ -412,6 +515,23 @@ export class Game {
             this.spiceField.update(dt, ch.position);
             this.worm.update(dt);
             this.wind.update(dt, ch.position);
+            this._updateBlow(dt);
+
+            // The Sietch shelters. Inside Tabr's ground the rock is too thick
+            // for the worm to read — noise bleeds off fast — and the quiet is
+            // worth a faster mend. This turns the far south-west corner into
+            // the map's rest point, which is exactly as far from the Spice
+            // Bowl as a rest point should be.
+            const inS = Math.hypot(ch.position.x - SIETCH.x, ch.position.z - SIETCH.z) < SIETCH.r;
+            if (inS) {
+                this.worm.noise = Math.max(0, this.worm.noise - 0.25 * dt);
+                this.hp = Math.min(1, this.hp + 0.03 * dt);
+                if (!this._inSietch) {
+                    this.hud.toast("the sietch shelters you",
+                        "the worm cannot hear \u00b7 wounds mend", 3600);
+                }
+            }
+            this._inSietch = inS;
         }
 
         // Storm streaks: a faint constant screen-space wind smear whose weight
@@ -433,6 +553,17 @@ export class Game {
             this.hud.toast("+" + DISCOVER_REWARD + " spice", "for the finding", 2200);
             this._save();
         });
+        if (!this._allFound && this.landmarks.discovered >= this.landmarks.total) {
+            this._allFound = true;
+            this.spice += 300;
+            this.hud.setSpice(this.spice);
+            this.hud.death("THE DESERT IS KNOWN", 4200);
+            setTimeout(() => {
+                this.hud.toast("+300 spice", "every place has its name again", 4600);
+            }, 4400);
+            this._save();
+        }
+
         const near = this.landmarks.nearest;
         this.hud.setCompass(
             cp.heading, cp.marks, cp.count,

@@ -51,6 +51,10 @@ export class CharacterController {
         this.acceleration = new Vector3(0, 0, 0);
 
         this.facing = 0; // yaw, radians
+        /** Walk/run speed multiplier. The Dune Strider upgrade raises it;
+         *  nothing else writes it. Surf speed is deliberately untouched —
+         *  SURF_MAX is a physics ceiling the wake and worm are tuned against. */
+        this.speedMul = 1;
         this.speed = 0;
         this.speed01 = 0; // normalised against SURF_MAX, for FOV/wind
 
@@ -156,7 +160,7 @@ export class CharacterController {
     }
 
     _walkStep(h) {
-        const maxSpeed = input.sprint ? RUN_SPEED : WALK_SPEED;
+        const maxSpeed = (input.sprint ? RUN_SPEED : WALK_SPEED) * this.speedMul;
 
         _wish.set(
             _fwd.x * input.moveZ + _right.x * input.moveX,

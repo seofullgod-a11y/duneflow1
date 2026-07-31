@@ -142,6 +142,9 @@ const SPELL_KEYS = {
     Digit3: 3,
     Digit4: 4,
     Digit5: 5,
+    // 6 exists only for the trade panel; the spell dispatch ignores it and the
+    // plate check in game.js is bounded at 5.
+    Digit6: 6,
 };
 
 /** Resolve held keys into movement axes. Called once per frame before update. */

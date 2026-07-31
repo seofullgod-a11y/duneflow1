@@ -106,10 +106,15 @@ fn terrainMacroFull(p: vec2f, w: f32, amp: f32) -> vec3f {
     // Two layers, both gated on `flat` so they cost nothing off the rock:
     // 18 m crags for the broken faces, 5 m rubble to break the crags up.
     if (flatK > 0.01) {
+        // Weighted down on the flat caps: a mesa top strewn with 6 m crags is
+        // not a mesa top, and the peaks now carry their own spur relief. This
+        // layer is for the middle distances the spurs are too broad to fill.
+        let capness = smoothstep(0.85, 1.0, flatK);
+        let cragAmp = flatK * (1.0 - capness * 0.75);
         let crag = ridgedd(p * 0.055 + vec2f(19.3, 7.1), 4, 2.07, 0.50);
         let rubble = fbmDamped(p * 0.19 + vec2f(3.7, 28.1), 3, 2.11, 0.50, 0.4);
-        h += (crag.x - 0.42) * 6.5 * flatK;
-        h += rubble.x * 2.2 * flatK;
+        h += (crag.x - 0.42) * 4.8 * cragAmp;
+        h += rubble.x * 2.0 * flatK;
     }
     h = mix(h, L.floorY, clamp(L.floorM, 0.0, 1.0));
     h += L.rim;

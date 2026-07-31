@@ -148,11 +148,14 @@ export class Landmarks {
     constructor() {
         /** @type {Set<string>} */
         this.found = new Set();
-        /** Scratch, refilled each frame. Never reallocated. */
+        /** Scratch, refilled each frame. Never reallocated. One extra slot
+         *  carries the transient event mark (a spice blow). */
         this._marks = [];
-        for (let i = 0; i < LANDMARKS.length; i++) {
+        for (let i = 0; i < LANDMARKS.length + 1; i++) {
             this._marks.push({ bearing: 0, dist: 0, label: "", known: false });
         }
+        /** @type {{x:number, z:number}|null} transient compass mark */
+        this.event = null;
         this._count = 0;
         /** Nearest landmark of any kind, for the header line. */
         this.nearest = null;
@@ -210,6 +213,16 @@ export class Landmarks {
             m.dist = d;
             m.known = nowKnown;
             m.label = nowKnown ? l.name : "";
+        }
+
+        // The event mark, if one is live. Always "known" — a blow announces
+        // itself; there is nothing to discover about where it is.
+        if (this.event) {
+            const m = this._marks[n++];
+            m.bearing = Math.atan2(this.event.x - pos.x, this.event.z - pos.z);
+            m.dist = Math.hypot(this.event.x - pos.x, this.event.z - pos.z);
+            m.known = true;
+            m.label = "";
         }
 
         this._count = n;

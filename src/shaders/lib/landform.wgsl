@@ -261,8 +261,9 @@ fn rampartField(
     let d = sqrt(lat * lat + over * over);
     if (d > w * 1.15) { return vec3f(0.0); }
 
-    var t = clamp(1.0 - d / w, 0.0, 1.0);
-    t = t * t * (3.0 - 2.0 * t);
+    let t = clamp(1.0 - d / w, 0.0, 1.0);
+    // Concave, as on the peaks: a scree apron carrying a steep upper wall.
+    let prof = 0.26 * t * t + 0.74 * t * t * t * t;
 
     var endT = 1.0;
     if (taperA > 0.0) { endT *= smoothstep(0.0, taperA, s); }
@@ -270,9 +271,18 @@ fn rampartField(
 
     // Summits and cols along the crest.
     let crest = 0.52 + 0.68 * (noise2(vec2f(s * 0.0072, seed + 7.3)) * 0.5 + 0.5);
-    let spur = ridgedd(p * 0.024 + vec2f(seed * 2.7, seed * 1.3), 4, 2.10, 0.52).x;
 
-    let hh = h * crest * endT * (0.38 * t + 0.78 * t * t * (0.32 + 0.86 * spur));
+    // Spurs run *down the flanks*: compressed along the crest, stretched
+    // across it, so every ridge is a buttress descending from the crest line
+    // with a gully either side — the drainage a swept ridge actually has.
+    // (s, lat) is already the right coordinate frame and has no polar seam.
+    let warp2 = noise2(p * 0.016 + vec2f(seed * 1.7, seed * 0.9)) * 2.1;
+    let spur = ridgedd(vec2f(s * 0.052 + warp2, lat * 0.011 + seed), 3, 2.11, 0.54).x;
+    let crag = ridgedd(p * 0.052 + vec2f(seed * 2.7, seed * 1.3), 3, 2.09, 0.52).x;
+
+    let flank = t * (1.0 - t) * 4.0;
+    var hh = h * crest * endT * prof * (0.60 + 0.55 * spur);
+    hh += h * crest * endT * (0.15 * flank * (spur - 0.45) + 0.12 * t * t * (crag - 0.40));
     // Flatten only the upper flank and the crest, not the whole footprint.
     // `t*t` reaches 0.5 halfway down a 120 m flank, and a range 900 m long then
     // deletes the dune field from a quarter of a square kilometre — which is
