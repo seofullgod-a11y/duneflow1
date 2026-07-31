@@ -6,8 +6,15 @@
  * character drifts forward in frame. FOV widens with speed, the rig banks into
  * carves, and everything eases. Nothing here snaps.
  *
- * Open snow field, so there is no obstacle collision solve — only the ground
- * itself pushes the arm up, which buys a rig that never pops through a drift.
+ * Terrain interaction is two-mode, and the split is the whole trick:
+ *
+ *   small obstruction (a dune crest under the arm)  → LIFT the camera over it.
+ *   large obstruction (a canyon wall behind you)    → SHORTEN the arm.
+ *
+ * Lifting was the only mode while the world was an open field, and it was
+ * right there. The moment the map grew 60 m walls it became exactly wrong:
+ * lifting over a wall parks the camera on the clifftop staring straight down
+ * at the player. The threshold between the two modes is LIFT_MAX.
  */
 
 import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
@@ -22,9 +29,20 @@ const _fwd = new Vector3();
 const _right = new Vector3();
 const _up = new Vector3();
 const _tmp = new Vector3();
+const _arm = new Vector3();
 
 /** Height probes taken along the spring arm each frame. */
 const ARM_SAMPLES = 5;
+/** Finer march used for the wall clamp. */
+const WALL_SAMPLES = 12;
+/**
+ * Metres of lift the rig will accept before deciding the obstruction is a wall
+ * and pulling in instead. A drift crest is under a metre or two; a canyon
+ * bench is three and up.
+ */
+const LIFT_MAX = 2.2;
+/** The arm never collapses past this fraction of its length. */
+const ARM_MIN_K = 0.22;
 
 const PITCH_MIN = -0.62; // looking up
 const PITCH_MAX = 1.05; // looking down
@@ -91,6 +109,8 @@ export class CameraRig {
         this.groundClearance = 1.35;
         /** Eased lift currently being applied to stay above the surface. */
         this.groundLift = 0;
+        /** Eased arm-length multiplier from the wall clamp, 0..1. */
+        this.armK = 1;
 
         this._first = true;
     }
@@ -167,10 +187,35 @@ export class CameraRig {
         this.right.copyFrom(_right);
         this.up.copyFrom(_up);
 
+        // The full arm, pivot → eye, as one offset vector.
+        _arm.copyFrom(_fwd).scaleInPlace(-this.distance);
+        _arm.addInPlace(_tmp.copyFrom(_right).scaleInPlace(this.shoulder));
+        _arm.addInPlace(_tmp.copyFrom(_up).scaleInPlace(0.22));
+
+        // ---- walls: shorten the arm --------------------------------------
+        // March outward from the pivot; the first sample whose ground deficit
+        // exceeds LIFT_MAX is a wall, and the arm is clamped to just short of
+        // it. Fast to pull in (a wall in frame is the emergency), slow to pay
+        // back out (re-extending through a gap the player is still beside
+        // would oscillate).
+        if (this.groundAt) {
+            let kClear = 1;
+            for (let i = 1; i <= WALL_SAMPLES; i++) {
+                const t = i / WALL_SAMPLES;
+                const x = this.pivot.x + _arm.x * t;
+                const z = this.pivot.z + _arm.z * t;
+                const y = this.pivot.y + _arm.y * t;
+                const gh = this.groundAt(x, z) + this.groundClearance * (0.35 + 0.65 * t);
+                if (gh - y > LIFT_MAX) {
+                    kClear = Math.max(ARM_MIN_K, (i - 1) / WALL_SAMPLES);
+                    break;
+                }
+            }
+            this.armK = expDamp(this.armK, kClear, kClear < this.armK ? 24 : 3.0, dt);
+        }
+
         _desired.copyFrom(this.pivot);
-        _desired.addInPlace(_tmp.copyFrom(_fwd).scaleInPlace(-this.distance));
-        _desired.addInPlace(_tmp.copyFrom(_right).scaleInPlace(this.shoulder));
-        _desired.addInPlace(_tmp.copyFrom(_up).scaleInPlace(0.22));
+        _desired.addInPlace(_tmp.copyFrom(_arm).scaleInPlace(this.armK));
 
         // ---- keep the arm out of the snow --------------------------------
         // The lift rises quickly and relaxes slowly: snapping down the instant a
