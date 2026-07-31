@@ -114,7 +114,10 @@ fn canyonRun(
     // run for the full wall height. Sheer, in other words, and about as sheer
     // as a 0.5 m/texel bake can hold.
     let floorM = 1.0 - smoothstep(w * 0.70, w, d);
-    let rimM = smoothstep(w * 0.90, w * 1.22, d) * (1.0 - smoothstep(w * 1.55, w * 3.0, d));
+    // Two benches rather than one lip, for the same graded read the slot has:
+    // an inner rim right off the floor and an outer shoulder behind it.
+    let rimM = smoothstep(w * 0.90, w * 1.22, d) * (1.0 - smoothstep(w * 1.55, w * 3.0, d))
+             + 0.7 * smoothstep(w * 1.60, w * 2.05, d) * (1.0 - smoothstep(w * 2.6, w * 4.2, d));
     // Rock is painted wider than the cut: the ground either side of a canyon is
     // scoured caprock, not sand.
     let rockM = 1.0 - smoothstep(w * 2.4, w * 3.8, d);
@@ -340,10 +343,76 @@ fn addMassif(L: Land, m: vec3f) -> Land {
 /// the height the ground "would" be with no sand on it. Canyon floors and basin
 /// bottoms are pinned relative to it, so the map's cuts follow the roll of the
 /// land instead of slicing a flat plane through it.
-/// The spawn slot's floor half-width. Mirrored by SLOT_HALF_WIDTH in
-/// game/landmarks.js — the two must agree or the player clamps to a corridor
-/// that is not where the walls are.
+// -----------------------------------------------------------------------------
+//  The spawn slot
+//
+//  Authored analytically — two summed sines for the centreline, one for the
+//  width — because game.js clamps the player to this exact corridor on the
+//  CPU and cannot reproduce a GPU noise field. A straight slot was the first
+//  answer to that constraint, and it looked like a sawcut: real slot canyons
+//  never run straight, they *snake*, and the walls step up in benches where
+//  harder strata resisted the flood that carved them.
+//
+//  Every function here is mirrored verbatim in game/landmarks.js. Change one,
+//  change both, or the player clamps to a corridor that is not where the
+//  walls are.
+// -----------------------------------------------------------------------------
+
 const SLOT_HALF_WIDTH: f32 = 7.0;
+
+/// Centreline x at a given z. Two wavelengths: a long swing (~515 m) that
+/// takes the corridor genuinely off-axis, and a shorter one (~210 m) that
+/// keeps any stretch from reading as straight. Combined amplitude ~20 m,
+/// comfortably inside the Rampart's 118 m half-width.
+fn slotCenter(z: f32) -> f32 {
+    return sin(z * 0.030) * 7.5 + sin(z * 0.0122 + 1.7) * 13.0;
+}
+
+/// Floor half-width at a given z — breathes between squeezes and chambers.
+fn slotWidth(z: f32) -> f32 {
+    return SLOT_HALF_WIDTH * (0.78 + 0.30 * sin(z * 0.047 + 0.8));
+}
+
+/// The slot's whole contribution: (floorMask, wallAdd, rockMask, depth).
+///
+/// The walls are *terraced* — three benches climbing away from the floor,
+/// each one softened and swayed by its own phase so the steps drift in and
+/// out of each other along the run. This is the "graded" read of a real slot
+/// canyon: not one lip, but a staircase of strata.
+fn slotShape(p: vec2f) -> vec4f {
+    let z = p.y;
+    // Open from deep in the Rampart to just past the mouth.
+    let endT = smoothstep(-215.0, -192.0, z) * (1.0 - smoothstep(-2.0, 6.0, z));
+    if (endT < 0.001) { return vec4f(0.0); }
+
+    let lat = abs(p.x - slotCenter(z));
+    let w = slotWidth(z);
+
+    let floorM = (1.0 - smoothstep(w * 0.70, w, lat)) * endT;
+
+    // The benches. Positions in units of w, heights in metres; each band is a
+    // rise-and-hold: up over the riser, held across the tread, released into
+    // the next riser. The per-tier sway keeps the treads from being conic
+    // sections around the centreline.
+    var wall = 0.0;
+    let s1 = sin(z * 0.055 + 0.4) * 0.10;
+    let s2 = sin(z * 0.041 + 2.1) * 0.14;
+    let s3 = sin(z * 0.033 + 4.5) * 0.18;
+    wall += 3.0 * smoothstep(w * (0.95 + s1), w * (1.30 + s1), lat);
+    wall += 5.5 * smoothstep(w * (1.45 + s2), w * (1.95 + s2), lat);
+    wall += 7.5 * smoothstep(w * (2.10 + s3), w * (2.80 + s3), lat);
+    // The whole staircase fades where the corridor does, and its top blends
+    // into the Rampart's own flank rather than standing as a fin past it.
+    wall *= endT * (1.0 - smoothstep(w * 4.5, w * 7.0, lat));
+
+    let rockM = (1.0 - smoothstep(w * 3.2, w * 5.5, lat)) * endT;
+
+    // Depth breathes with the run: shallow at the wake-up wall, deepest
+    // through the middle passage, rising to meet the erg at the mouth.
+    let depth = 3.0 + 3.5 * smoothstep(-205.0, -150.0, z) * (1.0 - smoothstep(-70.0, -4.0, z));
+
+    return vec4f(floorM, wall, rockM, depth);
+}
 
 fn landform(p: vec2f, base: f32) -> Land {
     var L: Land;
@@ -435,10 +504,15 @@ fn landform(p: vec2f, base: f32) -> Land {
     // due north from z = -185 to the mouth at z = 0. Kept straight in plan
     // (game.js clamps the player to a matching centreline) and narrow, so the
     // walls are the full 100 m of the massif above it.
-    L = addCanyon(L, base, canyonRun(
-        p, vec2f(0.0, -215.0), vec2f(0.0, 4.0),
-        SLOT_HALF_WIDTH, 5.0, 3.0, 26.0, 26.0, 0.0
-    ));
+    {
+        let sl = slotShape(p);
+        if (sl.x > L.floorM) {
+            L.floorM = sl.x;
+            L.floorY = base - sl.w;
+        }
+        L.rim += sl.y; // terraces ADD — they are the wall, not a lip
+        L.rock = max(L.rock, sl.z);
+    }
 
     // BONE CANYON — east out of the bowl, then south to the Spice Bowl. The
     // main road: wide enough to run, deep enough to hide wormsign.

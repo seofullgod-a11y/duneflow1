@@ -37,15 +37,35 @@ export const SLOT_START_Z = -215;
 export const SLOT_MOUTH_Z = 0;
 /** Where the player wakes, deep inside the Great Rampart. */
 export const SPAWN_Z = -178;
+
 /**
- * Half-width the player is actually clamped to.
- *
- * Inside the floor mask, not on its edge: the bake reconstructs bicubically at
- * 1 m spacing on the CPU mirror, so the last metre or so before the wall reads
- * as already climbing. Clamping short of it keeps the feet on floor the height
- * lookup agrees is floor.
+ * Centreline x of the slot at a given z. VERBATIM mirror of `slotCenter` in
+ * shaders/lib/landform.wgsl — the corridor snakes, and the clamp has to snake
+ * with it.
+ * @param {number} z
  */
-export const SLOT_CLAMP = SLOT_HALF_WIDTH * 0.7 - 1.6;
+export function slotCenterX(z) {
+    return Math.sin(z * 0.030) * 7.5 + Math.sin(z * 0.0122 + 1.7) * 13.0;
+}
+
+/**
+ * Floor half-width at a given z. Mirror of `slotWidth`.
+ * @param {number} z
+ */
+export function slotHalfWidth(z) {
+    return SLOT_HALF_WIDTH * (0.78 + 0.30 * Math.sin(z * 0.047 + 0.8));
+}
+
+/**
+ * Clampable half-width at a given z: inside the floor mask, not on its edge.
+ * The bake reconstructs bicubically at 1 m spacing on the CPU mirror, so the
+ * last metre before the wall already reads as climbing; clamping short of it
+ * keeps the feet on floor the height lookup agrees is floor.
+ * @param {number} z
+ */
+export function slotClampWidth(z) {
+    return Math.max(1.2, slotHalfWidth(z) * 0.7 - 1.4);
+}
 
 // -----------------------------------------------------------------------------
 //  The register

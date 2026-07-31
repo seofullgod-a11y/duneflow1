@@ -83,11 +83,26 @@ const LASH_DPS = 0.040;      // ~25 s of held lash in range, across the fight
 const RIPOSTE_DAMAGE = 0.09; // a dodged strike costs it this
 const BOSS_HP_REGEN = 0.006; // slow — disengaging fully resets nothing fast
 
+/** The prologue cards, in order. The last is the title. */
+const PROLOGUE = [
+    { line: "in the year the wells failed",
+      sub: "the tribe of the deep shelter weighed water against everything" },
+    { line: "the oldest worm of the erg offered a trade",
+      sub: "water for service \u00b7 sworn on three rings" },
+    { line: "it took them into the sand",
+      sub: "the storm that has not stopped is its breath" },
+    { line: "you slept through the taking",
+      sub: "sealed in the slot \u00b7 you are what is left" },
+    { line: "DUNEFLOW", sub: "the last water", title: true },
+];
+
 export class Story {
     /** @param {import("./game.js").Game} game */
     constructor(game) {
         this.g = game;
         this.stage = ST_WAKING;
+        /** True while the prologue sheet is up; gates the wake-up beats. */
+        this.introDone = false;
         /** @type {Set<string>} */
         this.rings = new Set();
         this.bossHp = 1;
@@ -100,6 +115,17 @@ export class Story {
     // ------------------------------------------------------------ persistence
     saveInto(d) {
         d.story = { stage: this.stage, rings: Array.from(this.rings) };
+    }
+
+    /**
+     * Run the prologue. Called by Game once the HUD exists — every launch, not
+     * only the first: the opening IS the game's front door, and Escape skips
+     * it in a keypress for anyone coming back.
+     */
+    runIntro() {
+        this.g.hud.intro(PROLOGUE, () => {
+            this.introDone = true;
+        });
     }
 
     loadFrom(d) {

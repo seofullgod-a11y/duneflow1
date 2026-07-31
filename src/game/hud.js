@@ -295,6 +295,66 @@ const CSS = `
     color: var(--frost-dim);
 }
 
+/* ---- the prologue -------------------------------------------------------- */
+/* The opening. Full-bleed black with letterboxed cards, one line of story at a
+   time — the game starts here, not under it. The world loads and stands ready
+   behind the black, so the final fade lands straight onto the wake-up shot
+   with no hitch. */
+#hud-intro {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: #050302;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    transition: opacity 1600ms ease;
+}
+#hud-intro.fade { opacity: 0; pointer-events: none; }
+#hud-intro .card {
+    text-align: center;
+    max-width: 640px;
+    padding: 0 24px;
+    opacity: 0;
+    transition: opacity 1100ms ease;
+}
+#hud-intro .card.show { opacity: 1; }
+#hud-intro .line {
+    font-size: clamp(15px, 2.0vw, 22px);
+    letter-spacing: 0.32em;
+    text-indent: 0.32em;
+    text-transform: uppercase;
+    color: #d8c091;
+    text-shadow: 0 0 28px rgba(214, 178, 122, 0.35);
+    line-height: 2.1;
+}
+#hud-intro .sub {
+    display: block;
+    margin-top: 1.6em;
+    font-size: 11px;
+    letter-spacing: 0.26em;
+    text-indent: 0.26em;
+    color: var(--frost-dim);
+}
+#hud-intro .title {
+    font-size: clamp(30px, 5vw, 58px);
+    letter-spacing: 0.42em;
+    text-indent: 0.42em;
+    color: #e6c98a;
+    text-shadow: 0 0 44px rgba(214, 178, 122, 0.5);
+}
+#hud-intro .skip {
+    position: absolute;
+    bottom: 26px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    color: rgba(154, 138, 115, 0.55);
+}
+
 /* ---- objective line, under the status bars ------------------------------- */
 #hud-objective {
     position: absolute;
@@ -443,6 +503,7 @@ export class Hud {
         this._foundTitle = this._foundEl.querySelector(".title");
         this._foundTimer = 0;
         this._lastPlace = null;
+        this._introEl = null;
         this._objEl = document.getElementById("hud-objective");
         this._lastObj = null;
         this._tradeEl = document.getElementById("hud-trade");
@@ -637,6 +698,71 @@ export class Hud {
             this._placeEl.textContent = place || "";
         }
         this._placeEl.classList.toggle("show", !!place);
+    }
+
+    /**
+     * The prologue. Builds its own root so nothing of the HUD shows through.
+     * Cards auto-advance; any click or key steps forward; the last card is the
+     * title, and after it the whole sheet fades off and `onDone` fires.
+     * @param {{line: string, sub?: string, title?: boolean}[]} cards
+     * @param {() => void} onDone
+     */
+    intro(cards, onDone) {
+        const root = document.createElement("div");
+        root.id = "hud-intro";
+        root.innerHTML = `<div class="card"></div>
+            <div class="skip">click or press any key to continue</div>`;
+        document.body.appendChild(root);
+        this._introEl = root;
+        const card = root.querySelector(".card");
+
+        let i = -1;
+        let timer = 0;
+        let finished = false;
+
+        const show = () => {
+            i++;
+            if (i >= cards.length) return finish();
+            const c = cards[i];
+            card.classList.remove("show");
+            setTimeout(() => {
+                card.innerHTML = c.title
+                    ? `<div class="title">${c.line}</div>` +
+                      (c.sub ? `<span class="sub">${c.sub}</span>` : "")
+                    : `<div class="line">${c.line}</div>` +
+                      (c.sub ? `<span class="sub">${c.sub}</span>` : "");
+                card.classList.add("show");
+            }, i === 0 ? 60 : 450);
+            clearTimeout(timer);
+            timer = setTimeout(show, c.title ? 4600 : 5400);
+        };
+
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timer);
+            window.removeEventListener("keydown", onKey, true);
+            root.removeEventListener("click", onClick);
+            root.classList.add("fade");
+            setTimeout(() => root.remove(), 1700);
+            this._introEl = null;
+            onDone?.();
+        };
+
+        const onClick = () => show();
+        const onKey = (e) => {
+            // Swallow the key so it doesn't also cast a spell underneath.
+            e.stopPropagation();
+            if (e.code === "Escape") finish();
+            else show();
+        };
+        root.addEventListener("click", onClick);
+        window.addEventListener("keydown", onKey, true);
+        show();
+    }
+
+    get introActive() {
+        return !!this._introEl;
     }
 
     /** The story objective line. Pass null to hide. */

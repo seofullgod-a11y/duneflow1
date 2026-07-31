@@ -33,7 +33,8 @@ import { WormSystem } from "./worm.js";
 import { Wind } from "./wind.js";
 import { Controls } from "./controls.js";
 import {
-    Landmarks, SLOT_CLAMP, SLOT_MOUTH_Z, SLOT_START_Z, SPAWN_Z,
+    Landmarks, SLOT_MOUTH_Z, SLOT_START_Z, SPAWN_Z,
+    slotCenterX, slotClampWidth,
 } from "./landmarks.js";
 import { Story, ST_BOSS } from "./story.js";
 import { set as setSetting } from "../core/settings.js";
@@ -176,12 +177,16 @@ export class Game {
         this.phase = "canyon";
         {
             const c = ctx.controller;
-            c.position.x = 0;
+            c.position.x = slotCenterX(SPAWN_Z);
             c.position.z = SPAWN_Z;
-            c.position.y = ctx.terrain.heightAt(0, SPAWN_Z);
+            c.position.y = ctx.terrain.heightAt(c.position.x, SPAWN_Z);
         }
         this._storyT = 0;
         this._storyBeat = 0;
+
+        // The front door. The world keeps simulating behind the black, so the
+        // fade lands on a live shot; the wake-up toasts hold until it clears.
+        this.story.runIntro();
     }
 
     _loadSave() {
@@ -370,13 +375,14 @@ export class Game {
         }
     }
 
-    /** The scripted trickle of the opening. */
+    /** The scripted trickle of the opening. Held until the prologue clears. */
     _story(dt) {
+        if (!this.story.introDone) return;
         this._storyT += dt;
         if (this._storyBeat === 0 && this._storyT > 2.0) {
             this._storyBeat = 1;
-            this.hud.toast("you wake in the slot",
-                "the tribe is gone \u00b7 the water is gone", 5200);
+            this.hud.toast("you wake",
+                "the slot kept you \u00b7 it kept nothing else", 5200);
         } else if (this._storyBeat === 1 && this._storyT > 8.5) {
             this._storyBeat = 2;
             this.hud.toast("the light is north",
@@ -474,10 +480,12 @@ export class Game {
         if (this.phase === "canyon") {
             this._story(dt);
             if (ch.position.z < SLOT_MOUTH_Z + 6) {
-                // Straight walls, straight clamp. Held a little inside the
-                // floor mask — see SLOT_CLAMP.
-                if (ch.position.x < -SLOT_CLAMP) ch.position.x = -SLOT_CLAMP;
-                if (ch.position.x > SLOT_CLAMP) ch.position.x = SLOT_CLAMP;
+                // The corridor snakes; the clamp follows the same analytic
+                // centreline the shader carved. See slotCenterX/slotClampWidth.
+                const cx = slotCenterX(ch.position.z);
+                const cw = slotClampWidth(ch.position.z);
+                if (ch.position.x < cx - cw) ch.position.x = cx - cw;
+                if (ch.position.x > cx + cw) ch.position.x = cx + cw;
                 if (ch.position.z < SLOT_START_Z + 14) ch.position.z = SLOT_START_Z + 14;
             } else {
                 this._exitCave();
