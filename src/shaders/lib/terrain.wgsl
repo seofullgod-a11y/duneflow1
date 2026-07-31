@@ -85,8 +85,30 @@ fn terrainMacroFull(p: vec2f, w: f32, amp: f32) -> vec3f {
     // it. See landform.wgsl.
     let L = landform(p, base);
 
-    h = mix(h, base, clamp(L.flatten, 0.0, 1.0));
+    let flat = clamp(L.flatten, 0.0, 1.0);
+    // 0.88, not 1.0. Even a bare cliff has sand banked in its hollows, and a
+    // surface with *zero* of the dune field left on it stops sharing any
+    // texture with the ground around it — it reads as a different material
+    // pasted over the desert rather than as rock standing out of it.
+    h = mix(h, base, flat * 0.88);
     h += L.add;
+
+    // Rock detail.
+    //
+    // Removing the dunes from a massif and putting nothing back is what made
+    // the Great Rampart a smooth dome the size of the play area. The dune field
+    // was carrying *all* of the metre-scale relief; take it away and there is
+    // nothing between the 100 m landform and the 2 m sastrugi, which is a hole
+    // three orders of magnitude wide right in the band the eye reads shape from.
+    //
+    // Two layers, both gated on `flat` so they cost nothing off the rock:
+    // 18 m crags for the broken faces, 5 m rubble to break the crags up.
+    if (flat > 0.01) {
+        let crag = ridgedd(p * 0.055 + vec2f(19.3, 7.1), 4, 2.07, 0.50);
+        let rubble = fbmDamped(p * 0.19 + vec2f(3.7, 28.1), 3, 2.11, 0.50, 0.4);
+        h += (crag.x - 0.42) * 6.5 * flat;
+        h += rubble.x * 2.2 * flat;
+    }
     h = mix(h, L.floorY, clamp(L.floorM, 0.0, 1.0));
     h += L.rim;
 

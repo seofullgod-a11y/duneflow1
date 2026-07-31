@@ -216,7 +216,7 @@ fn peakField(p: vec2f, c: vec2f, r: f32, h: f32, seed: f32) -> vec3f {
     let spur = ridgedd(q * 0.026 + vec2f(seed * 3.1, seed * 1.9), 4, 2.09, 0.52).x;
     let hh = h * (0.34 * t + 0.80 * t * t * (0.30 + 0.90 * spur));
 
-    return vec3f(hh, smoothstep(0.015, 0.22, t), t * t);
+    return vec3f(hh, smoothstep(0.015, 0.22, t), smoothstep(0.42, 0.92, t));
 }
 
 /// A range: a massif swept along a segment.
@@ -273,7 +273,12 @@ fn rampartField(
     let spur = ridgedd(p * 0.024 + vec2f(seed * 2.7, seed * 1.3), 4, 2.10, 0.52).x;
 
     let hh = h * crest * endT * (0.38 * t + 0.78 * t * t * (0.32 + 0.86 * spur));
-    return vec3f(hh, smoothstep(0.02, 0.24, t * endT), t * t * endT);
+    // Flatten only the upper flank and the crest, not the whole footprint.
+    // `t*t` reaches 0.5 halfway down a 120 m flank, and a range 900 m long then
+    // deletes the dune field from a quarter of a square kilometre — which is
+    // how a mountain turns into a bald plateau you can stand on and conclude
+    // the desert has disappeared.
+    return vec3f(hh, smoothstep(0.02, 0.24, t * endT), smoothstep(0.48, 0.94, t) * endT);
 }
 
 /// A crater: raised rim, sunken floor. Reads as a spice blow that went off
@@ -303,7 +308,9 @@ fn basinField(p: vec2f, c: vec2f, r: f32, depth: f32) -> vec2f {
     if (d > r * 1.25) { return vec2f(0.0); }
     var t = clamp(1.0 - d / r, 0.0, 1.0);
     t = t * t * (3.0 - 2.0 * t);
-    return vec2f(-depth * t, t * 0.85);
+    // 0.45, not 0.85: the Spice Bowl is a *sand* basin. Flattening it as hard
+    // as a mesa cap turns the richest ground on the map into a car park.
+    return vec2f(-depth * t, t * 0.45);
 }
 
 /// Fold a massif result into the accumulator.
@@ -355,7 +362,7 @@ fn landform(p: vec2f, base: f32) -> Land {
     // player wakes. Walking out, the walls *rise* for the first fifty metres
     // and only then fall away — so the reveal at the mouth is preceded by the
     // most enclosed part of the walk rather than by a steady opening out.
-    L = addMassif(L, rampartField(p, vec2f(-430.0, -150.0), vec2f( 455.0, -170.0), 118.0, 98.0, 1.7, 150.0, 150.0));
+    rng = max(rng, rampartField(p, vec2f(-430.0, -150.0), vec2f( 455.0, -170.0), 118.0, 98.0, 1.7, 150.0, 150.0));
     // Two summits standing off the wall, for a skyline with something in it.
     L = addMassif(L, peakField(p, vec2f(-255.0, -245.0), 150.0, 72.0, 4.3));
     L = addMassif(L, peakField(p, vec2f( 270.0, -260.0), 140.0, 66.0, 5.8));
@@ -364,10 +371,10 @@ fn landform(p: vec2f, base: f32) -> Land {
     // THE SHIELD WALL — the arc closing the north and east rim. Five massifs
     // with deliberate saddles between them: the gaps are Wind Gap and the
     // Eastern Stair, and they are the only ways out of the bowl on that side.
-    L = addMassif(L, rampartField(p, vec2f(-140.0, 615.0), vec2f( 265.0, 575.0), 112.0, 102.0, 0.6, 150.0,   0.0));
-    L = addMassif(L, rampartField(p, vec2f( 265.0, 575.0), vec2f( 545.0, 395.0), 118.0, 124.0, 3.4,   0.0,   0.0));
-    L = addMassif(L, rampartField(p, vec2f( 545.0, 395.0), vec2f( 665.0, 115.0), 106.0, 112.0, 6.1,   0.0,   0.0));
-    L = addMassif(L, rampartField(p, vec2f( 665.0, 115.0), vec2f( 640.0,-200.0),  98.0,  90.0, 2.2,   0.0, 160.0));
+    rng = max(rng, rampartField(p, vec2f(-140.0, 615.0), vec2f( 265.0, 575.0), 112.0, 102.0, 0.6, 150.0,   0.0));
+    rng = max(rng, rampartField(p, vec2f( 265.0, 575.0), vec2f( 545.0, 395.0), 118.0, 124.0, 3.4,   0.0,   0.0));
+    rng = max(rng, rampartField(p, vec2f( 545.0, 395.0), vec2f( 665.0, 115.0), 106.0, 112.0, 6.1,   0.0,   0.0));
+    rng = max(rng, rampartField(p, vec2f( 665.0, 115.0), vec2f( 640.0,-200.0),  98.0,  90.0, 2.2,   0.0, 160.0));
     // Two summits on the wall, so it has a profile and not just a height.
     L = addMassif(L, peakField(p, vec2f( 330.0,  530.0), 140.0,  96.0, 5.1));
     L = addMassif(L, peakField(p, vec2f( 590.0,  270.0), 125.0,  82.0, 1.4));
@@ -402,7 +409,7 @@ fn landform(p: vec2f, base: f32) -> Land {
     let cr = craterField(p, vec2f(-520.0, 55.0), 125.0, 30.0, 22.0);
     L.add += cr.x;
     L.rock = max(L.rock, cr.y);
-    L.flatten = max(L.flatten, cr.z * 0.8);
+    L.flatten = max(L.flatten, cr.z * 0.55);
 
     // THE SPICE BOWL — the great basin south-east. Flat, open, indefensible,
     // and where the richest spice sits. The trade is the whole point of it.

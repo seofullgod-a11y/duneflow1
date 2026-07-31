@@ -158,6 +158,30 @@ export class Heightfield {
         }
         this.minHeight = lo;
         this.maxHeight = hi;
+
+        // Say out loud what came back.
+        //
+        // A bake that silently produces a flat field is the single most
+        // expensive failure in this codebase to diagnose from the outside: the
+        // game loads, the material compiles, the HUD works, and the only symptom
+        // is that the world is a featureless plain — which is indistinguishable
+        // from a terrain function that is merely bad. One line here turns that
+        // into an answer.
+        const relief = hi - lo;
+        if (relief < 5) {
+            console.error(
+                "[heightfield] BAKE PRODUCED A FLAT FIELD — relief " +
+                relief.toFixed(2) + " m (expected ~250 m). The macro landform " +
+                "is not reaching the height texture. Check for a WGSL compile " +
+                "error above, and check S.macroHeightScale (currently " +
+                S.macroHeightScale + ")."
+            );
+        } else {
+            console.info(
+                "[heightfield] relief " + lo.toFixed(1) + " .. " + hi.toFixed(1) +
+                " m  (" + relief.toFixed(1) + " m), amp " + S.macroHeightScale
+            );
+        }
     }
 
     /**
