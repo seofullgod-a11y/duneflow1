@@ -22,7 +22,7 @@ import { Vector2, Vector3, Vector4, Color3 } from "@babylonjs/core/Maths/math";
 
 import { Figure, BONE_COUNT } from "./figure.js";
 import { makePanels, ClothSolver } from "./cloth.js";
-import { buildBody, buildFur, buildClothMesh } from "./build.js";
+import { buildBody, buildFur, buildHair, buildClothMesh } from "./build.js";
 import { S } from "../core/settings.js";
 import { whenReady, bindMatrixArray } from "../core/gpuUtil.js";
 import { CASCADE_COUNT } from "../render/shadows.js";
@@ -67,7 +67,11 @@ const PALETTE = [
     [0.190, 0.130, 0.092, 0.85], // 4 skin, a step lighter so the bare head reads
     [0.135, 0.100, 0.062, 0.72], // 5 trim, muted leather-brown (ref has no bright accent)
     [0.170, 0.140, 0.105, 0.85], // 6 fur, darkened toward hair
-    [0.100, 0.100, 0.100, 0.80], // 7 spare
+    // 7 hair. Darker than the cape, which is the darkest garment on the figure
+    // — because hair against a bare forehead has to read as a *shape* at any
+    // distance, and the only thing it can contrast against is skin. Not black:
+    // pure black takes no bounce light at all and the crown goes to a hole.
+    [0.028, 0.022, 0.018, 0.48],
 ];
 
 /**
@@ -87,13 +91,18 @@ const PARAMS = [
     [0.05, 0.00, 0.08, 0.00],
     [0.25, 0.60, 0.12, 1.00],
     [1.00, 0.00, 0.90, 0.00],
-    [0.20, 0.00, 0.00, 0.50],
+    // Hair: strong anisotropic sheen, no transmission, no weave. The sheen band
+    // running across the crown is most of what stops a dark cap reading as a
+    // helmet.
+    [0.55, 0.88, 0.02, 0.00],
 ];
 
 // ------------------------------------------------------- module-scope scratch
 const _droop = new Vector3();
+const _hairDroop = new Vector3();
 const _screen = new Vector2();
 const _furCol = new Color3(0.21, 0.17, 0.13); // dark, hair-like trim per the reference
+const _hairCol = new Color3(0.052, 0.040, 0.032); // near-black, matches slot 7
 
 export class Character {
     /**
@@ -153,16 +162,23 @@ export class Character {
         this.bodyMesh = buildBody(scene);
         this.clothMesh = buildClothMesh(scene, this.panels);
         this.furMesh = buildFur(scene);
+        this.hairMesh = buildHair(scene);
 
         this.bodyMat = this._makeSurfaceMaterial("charBody", "char", "char", false);
         this.clothMat = this._makeSurfaceMaterial("charCloth", "cloth", "char", true);
-        this.furMat = this._makeFurMaterial();
+        this.furMat = this._makeFurMaterial("charFur");
+        // The hair gets its own material rather than sharing the trim's. Colour
+        // and strand density are both uniforms on that shader, and hair needs a
+        // different value for each: four times the density and a third of the
+        // reflectance. One material cannot be both.
+        this.hairMat = this._makeFurMaterial("charHair");
 
         this.bodyMesh.material = this.bodyMat;
         this.clothMesh.material = this.clothMat;
         this.furMesh.material = this.furMat;
+        this.hairMesh.material = this.hairMat;
 
-        for (const m of [this.bodyMesh, this.clothMesh, this.furMesh]) {
+        for (const m of [this.bodyMesh, this.clothMesh, this.furMesh, this.hairMesh]) {
             m.renderingGroupId = 1;
         }
 
@@ -182,7 +198,8 @@ export class Character {
         this.triangles =
             this.bodyMesh.metadata.triangles +
             this.clothMesh.metadata.triangles +
-            this.furMesh.metadata.triangles;
+            this.furMesh.metadata.triangles +
+            this.hairMesh.metadata.triangles;
 
         this._cameraPos = new Vector3();
         this._splits = new Vector4(0, 0, 0, 0);
@@ -237,9 +254,9 @@ export class Character {
         return mat;
     }
 
-    _makeFurMaterial() {
+    _makeFurMaterial(name) {
         const mat = new ShaderMaterial(
-            "charFur", this.scene, { vertex: "fur", fragment: "fur" },
+            name, this.scene, { vertex: "fur", fragment: "fur" },
             {
                 attributes: ["position", "normal", "uv", "aux", "boneIdx", "boneWt"],
                 uniforms: [
@@ -329,6 +346,7 @@ export class Character {
         this.bodyMesh.isVisible = this._visible;
         this.clothMesh.isVisible = this._visible;
         this.furMesh.isVisible = this._visible;
+        this.hairMesh.isVisible = this._visible;
     }
 
     /**
@@ -446,7 +464,7 @@ export class Character {
 
         this._splits.set(sh.splits[0], sh.splits[1], sh.splits[2], sh.splits[3]);
 
-        const mats = [this.bodyMat, this.clothMat, this.furMat];
+        const mats = [this.bodyMat, this.clothMat, this.furMat, this.hairMat];
         for (let i = 0; i < mats.length; i++) {
             const m = mats[i];
             m.setVector3("cameraPos", this._cameraPos);
@@ -490,6 +508,19 @@ export class Character {
         this.furMat.setVector3("furDroop", _droop);
         this.furMat.setFloat("furDensity", 250);
         this.furMat.setColor3("furColor", _furCol);
+
+        // Hair: 660 cells per metre is a 1.5 mm pitch, which is a coarse but
+        // plausible strand for a 2 cm crop. It also has to stay comfortably
+        // under the shell spacing — at 12 shells over 2 cm the sheets are 1.7 mm
+        // apart, and a strand field finer than the sheet spacing just aliases.
+        //
+        // A quarter of the trim's droop. Cropped hair does not swing; leaving
+        // the full value on makes the crown shear sideways in a sprint.
+        _hairDroop.copyFrom(_droop);
+        _hairDroop.scaleInPlace(0.25);
+        this.hairMat.setVector3("furDroop", _hairDroop);
+        this.hairMat.setFloat("furDensity", 660);
+        this.hairMat.setColor3("furColor", _hairCol);
     }
 
     /** Compile every pipeline behind the loading screen. */
@@ -497,6 +528,7 @@ export class Character {
         await whenReady(this.bodyMat, "character body material", [this.bodyMesh, false]);
         await whenReady(this.clothMat, "character cloth material", [this.clothMesh, false]);
         await whenReady(this.furMat, "character fur material", [this.furMesh, false]);
+        await whenReady(this.hairMat, "character hair material", [this.hairMesh, false]);
         for (let i = 0; i < this._depthMats.length; i++) {
             const m = this._depthMats[i];
             const mesh = m.name.indexOf("cloth") === 0 ? this.clothMesh : this.bodyMesh;
@@ -515,9 +547,11 @@ export class Character {
         this.bodyMesh.dispose();
         this.clothMesh.dispose();
         this.furMesh.dispose();
+        this.hairMesh.dispose();
         this.bodyMat.dispose();
         this.clothMat.dispose();
         this.furMat.dispose();
+        this.hairMat.dispose();
         this.charTex.dispose();
     }
 }

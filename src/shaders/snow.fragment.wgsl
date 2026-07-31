@@ -337,10 +337,33 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // gated by slope rather than applied flat.
     let rockExposed = rockMask * smoothstep(0.32, 0.66, 1.0 - N.y);
     if (rockExposed > 0.001) {
-        let rn = noise2(world.xz * 2.3) * 0.5 + 0.5;
-        let rockCol = mix(vec3f(0.055, 0.058, 0.068), vec3f(0.115, 0.112, 0.118), rn);
+        // Sandstone, not granite. The canyon walls and mesa faces are the
+        // biggest rock surfaces on the map now, and a cool grey against an
+        // amber field reads as concrete — the whole massif stops looking like
+        // it is made of the same stuff the sand came off.
+        //
+        // Bedding planes do most of the work. Rock banded *horizontally* is the
+        // single cheapest cue that a cliff is sedimentary and therefore huge:
+        // the bands give the eye a scale reference on a face that otherwise has
+        // no features at all. Keyed off world Y, so they stay level across a
+        // wall however the wall turns.
+        let strata = noise2(vec2f(world.y * 0.42, 3.1)) * 0.5 + 0.5;
+        let mottle = noise2(world.xz * 2.3) * 0.5 + 0.5;
+        let grain = noise2(world.xz * 11.0) * 0.5 + 0.5;
+        let band = clamp(strata * 0.7 + mottle * 0.3, 0.0, 1.0);
+        var rockCol = mix(
+            vec3f(0.062, 0.036, 0.023),  // shadowed iron-dark band
+            vec3f(0.196, 0.126, 0.074),  // pale ochre band
+            band
+        );
+        // A thin bleached band every so often, so the strata are not a single
+        // smooth gradient top to bottom.
+        rockCol = mix(rockCol, vec3f(0.235, 0.176, 0.122),
+                      smoothstep(0.86, 0.97, strata) * 0.8);
+        rockCol *= 0.88 + 0.24 * grain;
+
         albedo = mix(albedo, rockCol, rockExposed);
-        roughness = mix(roughness, 0.85, rockExposed);
+        roughness = mix(roughness, 0.88, rockExposed);
         thickness = mix(thickness, 0.0, rockExposed);
     }
 

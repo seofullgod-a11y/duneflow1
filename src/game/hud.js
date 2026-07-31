@@ -212,6 +212,89 @@ const CSS = `
     color: var(--frost-dim);
 }
 
+/* ---- compass strip, top-centre ------------------------------------------ */
+/* A heading tape rather than a minimap. A minimap tells you where everything
+   is and the desert stops being big; a tape tells you only which way a place
+   lies, which is what a landmark is for. Drawn to a canvas because the pips
+   move every frame and twenty-odd DOM transforms a frame is a lot of layout
+   for a strip of ticks. */
+#hud-compass {
+    position: absolute;
+    left: 50%;
+    top: 22px;
+    transform: translateX(-50%);
+    width: min(520px, 52vw);
+    height: 34px;
+    opacity: 0;
+    transition: opacity 600ms ease;
+    -webkit-mask-image: linear-gradient(90deg,
+        transparent 0%, #000 14%, #000 86%, transparent 100%);
+    mask-image: linear-gradient(90deg,
+        transparent 0%, #000 14%, #000 86%, transparent 100%);
+}
+#hud-compass.show { opacity: 0.92; }
+#hud-compass canvas { width: 100%; height: 100%; display: block; }
+
+/* the place-name line under the tape */
+#hud-place {
+    position: absolute;
+    left: 50%;
+    top: 58px;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 0.26em;
+    text-indent: 0.26em;
+    text-transform: uppercase;
+    color: var(--frost-dim);
+    text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+    opacity: 0;
+    transition: opacity 500ms ease;
+    white-space: nowrap;
+}
+#hud-place.show { opacity: 0.85; }
+
+/* ---- discovery card ----------------------------------------------------- */
+/* Deliberately not the toast. A toast is the game talking; this is the map
+   opening up, and it earns its own weight on screen. */
+#hud-found {
+    position: absolute;
+    left: 50%;
+    top: 30%;
+    transform: translateX(-50%);
+    text-align: center;
+    opacity: 0;
+    transition: opacity 700ms ease;
+    white-space: nowrap;
+    pointer-events: none;
+}
+#hud-found.show { opacity: 1; }
+#hud-found .rule {
+    height: 1px;
+    margin: 0 auto 14px;
+    width: 0;
+    background: linear-gradient(90deg,
+        transparent, rgba(214,178,122,0.85), transparent);
+    transition: width 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#hud-found.show .rule { width: 340px; }
+#hud-found .rule.b { margin: 14px auto 0; }
+#hud-found .title {
+    font-size: clamp(18px, 2.4vw, 30px);
+    letter-spacing: 0.30em;
+    text-indent: 0.30em;
+    color: #e6c98a;
+    text-shadow: 0 0 24px rgba(214, 178, 122, 0.45);
+}
+#hud-found .sub {
+    display: block;
+    margin-top: 0.9em;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    text-indent: 0.24em;
+    text-transform: uppercase;
+    color: var(--frost-dim);
+}
+
 /* ---- death card --------------------------------------------------------- */
 #hud-death {
     position: absolute;
@@ -255,7 +338,14 @@ export class Hud {
                 <span class="glyph">\u2726</span>
                 <span class="value" id="hud-spice-value">0</span>
             </div>
+            <div id="hud-compass"><canvas></canvas></div>
+            <div id="hud-place"></div>
             <div id="hud-toast"></div>
+            <div id="hud-found">
+                <div class="rule"></div>
+                <div class="title"></div>
+                <div class="rule b"></div>
+            </div>
             <div id="hud-death"></div>
         `;
         document.body.appendChild(root);
@@ -273,8 +363,19 @@ export class Hud {
         this._toastEl = document.getElementById("hud-toast");
         this._deathEl = document.getElementById("hud-death");
 
+        this._compassEl = document.getElementById("hud-compass");
+        this._compassCv = this._compassEl.querySelector("canvas");
+        this._compassCtx = this._compassCv.getContext("2d");
+        this._compassW = 0;
+        this._placeEl = document.getElementById("hud-place");
+        this._foundEl = document.getElementById("hud-found");
+        this._foundTitle = this._foundEl.querySelector(".title");
+        this._foundTimer = 0;
+        this._lastPlace = null;
+
         this._toastTimer = 0;
         this._skillTimer = 0;
+        this._foundTimer = 0;
         this._lastSpice = -1;
         this._lastHp = -1;
         this._lastSt = -1;
@@ -353,10 +454,142 @@ export class Hud {
         );
     }
 
+    /**
+     * The heading tape.
+     *
+     * @param {number|null} heading radians; null hides the strip
+     * @param {{bearing: number, dist: number, label: string, known: boolean}[]} marks
+     * @param {number} count how many entries of `marks` are live this frame
+     * @param {string|null} place name under the tape, or null
+     */
+    setCompass(heading, marks, count, place) {
+        if (heading === null || heading === undefined) {
+            this._compassEl.classList.remove("show");
+            this._placeEl.classList.remove("show");
+            return;
+        }
+        this._compassEl.classList.add("show");
+
+        // Resize to the backing store only when it actually changes. Writing
+        // canvas.width every frame clears it *and* reallocates, which is a
+        // guaranteed way to make a strip of ticks the most expensive thing on
+        // screen.
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const cssW = this._compassEl.clientWidth;
+        const cssH = this._compassEl.clientHeight;
+        const w = Math.round(cssW * dpr);
+        const h = Math.round(cssH * dpr);
+        if (w !== this._compassW) {
+            this._compassCv.width = w;
+            this._compassCv.height = h;
+            this._compassW = w;
+        }
+
+        const ctx = this._compassCtx;
+        ctx.clearRect(0, 0, w, h);
+
+        // Half the angular span the tape shows. Wider than a viewport FOV on
+        // purpose: the point is peripheral awareness of where things are, not a
+        // second reticle.
+        const HALF = Math.PI / 3;
+        const pxPerRad = (w * 0.5) / HALF;
+        const mid = w * 0.5;
+        const baseY = h * 0.62;
+
+        ctx.lineWidth = Math.max(1, dpr);
+
+        // ---- the tape itself ---------------------------------------------
+        ctx.strokeStyle = "rgba(214, 178, 122, 0.30)";
+        ctx.beginPath();
+        ctx.moveTo(0, baseY);
+        ctx.lineTo(w, baseY);
+        ctx.stroke();
+
+        // Ticks every 15 degrees, labelled every 45.
+        const NAMES = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+        ctx.font = `${Math.round(9 * dpr)}px ui-serif, Georgia, serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        for (let deg = 0; deg < 360; deg += 15) {
+            const a = wrapPi((deg * Math.PI) / 180 - heading);
+            if (Math.abs(a) > HALF) continue;
+            const x = mid + a * pxPerRad;
+            const cardinal = deg % 45 === 0;
+            ctx.strokeStyle = cardinal
+                ? "rgba(226, 198, 152, 0.85)"
+                : "rgba(214, 178, 122, 0.32)";
+            ctx.beginPath();
+            ctx.moveTo(x, baseY);
+            ctx.lineTo(x, baseY - (cardinal ? 9 : 5) * dpr);
+            ctx.stroke();
+            if (cardinal) {
+                ctx.fillStyle = "rgba(232, 208, 168, 0.9)";
+                ctx.fillText(NAMES[deg / 45], x, baseY - 12 * dpr);
+            }
+        }
+
+        // ---- landmark pips ------------------------------------------------
+        // Drawn below the line so they never fight the cardinals, and sized by
+        // proximity so the thing you are walking toward is the loudest mark.
+        for (let i = 0; i < count; i++) {
+            const m = marks[i];
+            const a = wrapPi(m.bearing - heading);
+            if (Math.abs(a) > HALF) continue;
+            const x = mid + a * pxPerRad;
+            const near = 1 - Math.min(1, m.dist / 600);
+            const s = (3.0 + near * 2.2) * dpr;
+
+            ctx.beginPath();
+            ctx.moveTo(x, baseY + 4 * dpr);
+            ctx.lineTo(x + s, baseY + 4 * dpr + s);
+            ctx.lineTo(x, baseY + 4 * dpr + s * 2);
+            ctx.lineTo(x - s, baseY + 4 * dpr + s);
+            ctx.closePath();
+            if (m.known) {
+                ctx.fillStyle = `rgba(226, 178, 95, ${0.45 + near * 0.5})`;
+                ctx.fill();
+            } else {
+                // Unfound: an outline. You can see that something is out there
+                // and which way, but not what it is.
+                ctx.strokeStyle = "rgba(190, 170, 140, 0.5)";
+                ctx.stroke();
+            }
+        }
+
+        if (place !== this._lastPlace) {
+            this._lastPlace = place;
+            this._placeEl.textContent = place || "";
+        }
+        this._placeEl.classList.toggle("show", !!place);
+    }
+
+    /** The discovery card. Bigger than a toast, and rarer. */
+    discover(title, sub) {
+        this._foundTitle.innerHTML =
+            title + (sub ? `<span class="sub">${sub}</span>` : "");
+        // Force a reflow so the rules re-run their draw-out transition even
+        // when two landmarks are found back to back.
+        this._foundEl.classList.remove("show");
+        void this._foundEl.offsetWidth;
+        this._foundEl.classList.add("show");
+        clearTimeout(this._foundTimer);
+        this._foundTimer = setTimeout(
+            () => this._foundEl.classList.remove("show"), 4200
+        );
+    }
+
     /** The big letterboxed death card. */
     death(text, ms) {
         this._deathEl.textContent = text;
         this._deathEl.classList.add("show");
         setTimeout(() => this._deathEl.classList.remove("show"), ms || 3200);
     }
+}
+
+/** Wrap an angle to (-pi, pi]. */
+function wrapPi(a) {
+    let x = a;
+    while (x > Math.PI) x -= Math.PI * 2;
+    while (x < -Math.PI) x += Math.PI * 2;
+    return x;
 }

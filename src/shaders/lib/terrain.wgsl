@@ -19,6 +19,8 @@
 // to the wind (dune ridges), fine forms run parallel to it (sastrugi streaks).
 // -----------------------------------------------------------------------------
 
+#include<snowLandform>
+
 /// Build the combined rotate-and-anisotropically-scale matrix for a noise layer.
 /// `sx` stretches along the wind, `sy` across it; `scale` is the wavelength.
 /// A layer's derivative maps back to world space with `dHdq * M`.
@@ -32,9 +34,19 @@ fn windMat(angle: f32, sx: f32, sy: f32, scale: f32) -> mat2x2f {
 
 // ------------------------------------------------------------------- macro
 
-/// Broad + medium landform. Returns metres.
+/// Broad + medium landform *and* the authored map, together.
+///
+/// Returns vec3f(height in metres, rock mask 0..1, open-floor mask 0..1).
+/// Three outputs rather than three functions because the dune field is
+/// evaluated once and all three fall out of the same composition — and the
+/// height bake is 16.7 M invocations, which is not the place to evaluate a
+/// five-octave fbm twice.
+///
+/// The open-floor mask is what stops rock outcrops (see `rockField`) spawning
+/// in the middle of a canyon corridor and blocking it.
+///
 /// `w` is the wind bearing in radians, `amp` a global height multiplier.
-fn terrainMacro(p: vec2f, w: f32, amp: f32) -> f32 {
+fn terrainMacroFull(p: vec2f, w: f32, amp: f32) -> vec3f {
     // --- broad dunes -------------------------------------------------------
     // Compressed along the wind, so ridge lines run across it. Derivative
     // damping keeps crests smooth and lets detail pool in the troughs.
@@ -44,9 +56,14 @@ fn terrainMacro(p: vec2f, w: f32, amp: f32) -> f32 {
 
     // A second, much larger and gentler swell so the field never reads as one
     // repeating dune wavelength. This is what gives the horizon its long roll.
+    //
+    // Kept as its own value as well as added in: it is the map's datum. Canyon
+    // floors and basin bottoms are pinned relative to `base`, so a cut follows
+    // the roll of the land rather than slicing a level plane through it.
     let m0 = windMat(w, 1.35, 1.0, 210.0);
     let swell = fbmDamped(m0 * p, 3, 2.11, 0.55, 0.3);
-    h += swell.x * 26.0;
+    let base = swell.x * 26.0;
+    h += base;
 
     // --- medium drifts and wind lobes --------------------------------------
     // The domain is sheared along the wind by the broad height, which steepens
@@ -61,19 +78,32 @@ fn terrainMacro(p: vec2f, w: f32, amp: f32) -> f32 {
     let shelter = clamp(0.5 - broad.x * 0.75, 0.15, 1.0);
     h += med.x * 2.9 * shelter;
 
-    // --- the spawn canyon: see game.js. Ascending smoothstep edges only.
-    let cz = p.y;
-    let inf = (1.0 - smoothstep(-6.0, 10.0, cz)) * smoothstep(-95.0, -70.0, cz);
-    if (inf > 0.001) {
-        let sway = sin(cz * 0.09) * 4.0;
-        let d = abs(p.x - sway);
-        let ridge = smoothstep(2.6, 6.5, d) * (1.0 - smoothstep(9.0, 18.0, d));
-        let floorCut = 1.0 - smoothstep(0.0, 3.2, d);
-        h = mix(h, h * 0.25, inf * floorCut);
-        h += inf * (20.0 * ridge - 1.5 * floorCut);
-    }
+    // --- the authored map --------------------------------------------------
+    // Fixed order: flatten the sand off the rock, raise the rock, then cut the
+    // canyons through whatever is now there. Cutting last is what makes the
+    // spawn slot a gorge through the Great Rampart rather than a groove beside
+    // it. See landform.wgsl.
+    let L = landform(p, base);
 
-    return h * amp;
+    h = mix(h, base, clamp(L.flatten, 0.0, 1.0));
+    h += L.add;
+    h = mix(h, L.floorY, clamp(L.floorM, 0.0, 1.0));
+    h += L.rim;
+
+    // Sand still drifts along the foot of every wall and across every canyon
+    // floor, so the sand shader has somewhere to put ripples. A canyon floor
+    // scoured to bare rock everywhere reads as a corridor in a level, not as a
+    // place weather happens to.
+    let drift = med.x * 0.9 + broad.x * 0.35;
+    h += drift * L.floorM * 0.55;
+
+    return vec3f(h * amp, clamp(L.rock, 0.0, 1.0), clamp(L.floorM, 0.0, 1.0));
+}
+
+/// Height only. Kept as the name every other pass calls, so nothing downstream
+/// has to know the map exists.
+fn terrainMacro(p: vec2f, w: f32, amp: f32) -> f32 {
+    return terrainMacroFull(p, w, amp).x;
 }
 
 /// Analytic macro derivative. Only the bake uses this — at runtime the value is

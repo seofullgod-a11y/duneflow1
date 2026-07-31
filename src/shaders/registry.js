@@ -25,6 +25,7 @@ import waterLib from "./lib/water.wgsl?raw";
 import crystalLib from "./lib/crystal.wgsl?raw";
 import postCommonLib from "./lib/postCommon.wgsl?raw";
 import ridgeLib from "./lib/ridge.wgsl?raw";
+import landformLib from "./lib/landform.wgsl?raw";
 
 import heightBakeFrag from "./heightBake.fragment.wgsl?raw";
 import auxBakeFrag from "./auxBake.fragment.wgsl?raw";
@@ -69,6 +70,7 @@ import crystalPrepassVert from "./crystalPrepass.vertex.wgsl?raw";
 
 const INCLUDES = {
     snowNoise: noiseLib,
+    snowLandform: landformLib,
     snowTerrain: terrainLib,
     snowShading: shadingLib,
     snowShadowLookup: shadowLookupLib,

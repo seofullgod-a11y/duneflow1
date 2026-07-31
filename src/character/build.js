@@ -38,7 +38,8 @@ export const M_TUNIC = 2;    // pale cream under-layer
 export const M_LEATHER = 3;  // belt and boots
 export const M_SKIN = 4;     // face, deep in shade
 export const M_TRIM = 5;     // pale blue banding
-export const M_FUR = 6;      // hood and cuff trim
+export const M_FUR = 6;      // cowl and cuff trim
+export const M_HAIR = 7;     // the solid base cap under the hair shells
 
 /** Segments around a limb. 14 is smooth at the distances this is seen from. */
 const SEG = 14;
@@ -286,33 +287,16 @@ export function buildBody(scene) {
     ];
     loft(B, neck, M_SKIN, [0, 0, 1], false, false);
 
-    // The skull. Deliberately featureless: the face stays in shadow under the
-    // cowl, and a half-finished face is far worse than a silhouette. It carries
-    // a heavy baked occlusion so the cavity reads dark even when the sun swings
-    // round to face it.
-    const head = [];
-    for (let i = 0; i <= 8; i++) {
-        const a = (i / 8) * Math.PI;
-        const y = HEAD_C[1] - Math.cos(a) * 0.105;
-        const r = Math.sin(a);
-        head.push(ring(
-            0, y, HEAD_C[2] + r * 0.006,
-            0.089 * r + 0.004, 0.096 * r + 0.004,
-            0.22, [B_HEAD, 1, 0, 0]
-        ));
-    }
-    loft(B, head, M_SKIN, [0, 0, 1], true, true);
-
-    // A scarf across the lower face, as in the reference. It is what stops the
-    // shadowed skull reading as an empty hood.
-    const scarf = [
-        ring(0, 1.560, 0.010, 0.086, 0.092, 0.30, [B_HEAD, 1, 0, 0]),
-        ring(0, 1.600, 0.012, 0.094, 0.100, 0.34, [B_HEAD, 1, 0, 0]),
-        ring(0, 1.638, 0.008, 0.092, 0.098, 0.30, [B_HEAD, 1, 0, 0]),
-    ];
-    loft(B, scarf, M_TRIM, [0, 0, 1], false, false);
-
-    buildHood(B);
+    // The head.
+    //
+    // This used to be a featureless ovoid, and that was the right call while it
+    // lived at the bottom of a cowl: a half-finished face in shadow is worse
+    // than a silhouette. The hood is down now, the camera gets within two
+    // metres of it, and the ovoid stopped being a silhouette and started being
+    // a mannequin. See buildHead.
+    buildHead(B);
+    buildHairCap(B);
+    buildCowlDown(B);
 
     // ---- arms -------------------------------------------------------------
     for (let a = 0; a < 2; a++) {
@@ -384,105 +368,453 @@ export function buildBody(scene) {
     return finishSkinned(scene, "charBody", B);
 }
 
+// -----------------------------------------------------------------------------
+//  Head
+// -----------------------------------------------------------------------------
+
 /**
- * The cowl.
+ * Skull profile, bind pose: `[y, halfWidth, frontRadius, backRadius]` in metres.
  *
- * Built as a swept Bezier: each strand runs from a point on the face-opening rim
- * to a point on the ring where the hood meets the shoulders, bowed outward by a
- * control point that is pushed furthest over the crown. That gives a genuinely
- * deep hood with a rolled opening, rather than a sphere with a hole in it.
+ * Three radii per slice rather than two, and that third number is what stops
+ * this reading as an egg. A head in plan is not an ellipse — it is short in
+ * front of the ear and long behind it, because the face is a flat plate hung on
+ * the front of a much larger braincase. Give the front and the back the same
+ * radius and the result is a peanut with a nose on it, at any resolution.
  *
- * The rim curve this produces is reused verbatim by the fur trim, so the two can
- * never drift apart.
+ * Total height 0.244 m, chin to crown, on a 1.79 m figure. Slightly small for
+ * the body, deliberately: heroic proportion survives being read at fifteen
+ * metres better than accurate proportion does, and the same reasoning already
+ * set the shoulder width in figure.js.
  */
-const HOOD_COLS = 34;
-const HOOD_ROWS = 9;
+const HEAD_PROFILE = [
+    [1.522, 0.030, 0.052, 0.036], // chin
+    [1.542, 0.050, 0.069, 0.058], // jaw
+    [1.562, 0.062, 0.078, 0.072], // mouth
+    [1.584, 0.070, 0.083, 0.082], // cheek
+    [1.606, 0.074, 0.083, 0.090], // eye line
+    [1.628, 0.076, 0.082, 0.095], // brow
+    [1.652, 0.076, 0.079, 0.098], // lower forehead
+    [1.676, 0.075, 0.075, 0.098], // upper forehead
+    [1.700, 0.072, 0.069, 0.095],
+    [1.722, 0.064, 0.060, 0.086],
+    [1.742, 0.050, 0.046, 0.068],
+    [1.758, 0.031, 0.028, 0.042],
+    [1.766, 0.008, 0.008, 0.011], // crown
+];
+const HEAD_CX = 0.0;
+const HEAD_CZ = 0.005;
+const HEAD_TOP = 1.766;
+const HEAD_COLS = 26;
+
+/** Head centre, still used by the cowl and the fur trim. */
 const HEAD_C = [0, 1.655, 0.005];
-const FACE_DIR = (() => {
-    const v = [0, -0.28, 0.96];
-    const l = Math.hypot(v[0], v[1], v[2]);
-    return [v[0] / l, v[1] / l, v[2] / l];
-})();
 
-/** Face-opening rim point at parameter `s` (0 = crown, 0.5 = under the chin). */
-export function hoodRimPoint(s, out) {
-    const a = s * Math.PI * 2;
-    // U spans the rim horizontally, W vertically, both perpendicular to FACE_DIR.
-    const ux = 1, uy = 0, uz = 0;
-    const wx = FACE_DIR[1] * uz - FACE_DIR[2] * uy;
-    const wy = FACE_DIR[2] * ux - FACE_DIR[0] * uz;
-    const wz = FACE_DIR[0] * uy - FACE_DIR[1] * ux;
-    const cx = HEAD_C[0] + FACE_DIR[0] * 0.105;
-    const cy = HEAD_C[1] + FACE_DIR[1] * 0.105;
-    const cz = HEAD_C[2] + FACE_DIR[2] * 0.105;
-    out[0] = cx + ux * 0.152 * Math.sin(a) + wx * 0.163 * Math.cos(a);
-    out[1] = cy + uy * 0.152 * Math.sin(a) + wy * 0.163 * Math.cos(a);
-    out[2] = cz + uz * 0.152 * Math.sin(a) + wz * 0.163 * Math.cos(a);
+const _sec = [0, 0, 0];
+const _hp = [0, 0, 0];
+
+function gauss(x, mu, sigma) {
+    const t = (x - mu) / sigma;
+    return Math.exp(-t * t);
+}
+
+function smooth01(x) {
+    const t = x < 0 ? 0 : x > 1 ? 1 : x;
+    return t * t * (3 - 2 * t);
+}
+
+/** Interpolate the profile table at an arbitrary height. */
+function headSection(y, out) {
+    const n = HEAD_PROFILE.length;
+    if (y <= HEAD_PROFILE[0][0]) {
+        out[0] = HEAD_PROFILE[0][1]; out[1] = HEAD_PROFILE[0][2]; out[2] = HEAD_PROFILE[0][3];
+        return out;
+    }
+    for (let i = 1; i < n; i++) {
+        if (y <= HEAD_PROFILE[i][0]) {
+            const a = HEAD_PROFILE[i - 1];
+            const b = HEAD_PROFILE[i];
+            const t = (y - a[0]) / (b[0] - a[0]);
+            out[0] = a[1] + (b[1] - a[1]) * t;
+            out[1] = a[2] + (b[2] - a[2]) * t;
+            out[2] = a[3] + (b[3] - a[3]) * t;
+            return out;
+        }
+    }
+    const l = HEAD_PROFILE[n - 1];
+    out[0] = l[1]; out[1] = l[2]; out[2] = l[3];
     return out;
 }
 
-function hoodBasePoint(s, out) {
-    const a = s * Math.PI * 2;
-    out[0] = 0.212 * Math.sin(a);
-    out[1] = 1.352;
-    out[2] = -0.012 - 0.182 * Math.cos(a);
+/**
+ * Radial displacement of the skull surface, metres, at height `y` and azimuth
+ * `a` (0 straight ahead, positive toward the character's left).
+ *
+ * Each term is one anatomical landmark written as a bump in two dimensions.
+ * Doing it this way rather than sculpting vertices means the same function
+ * drives the hair cap, the shell roots and the occlusion field, so all four
+ * agree by construction and none of them can drift when a number changes.
+ */
+function headRadial(y, a) {
+    const c = Math.cos(a);
+    let d = 0;
+
+    // Brow ridge — a bar across the front, dying out past the temples. The
+    // single most valuable feature on the whole head: it is what puts the eyes
+    // in shadow under any sun, which is what makes a face read at distance.
+    d += 0.0080 * gauss(y, 1.631, 0.013) * smooth01((c - 0.10) / 0.70);
+
+    // Eye sockets, under it.
+    d -= 0.0070 * gauss(y, 1.606, 0.011) *
+        (gauss(a, 0.42, 0.20) + gauss(a, -0.42, 0.20));
+
+    // Cheekbones.
+    d += 0.0052 * gauss(y, 1.588, 0.017) *
+        (gauss(a, 0.72, 0.26) + gauss(a, -0.72, 0.26));
+
+    // Temples, pinched. A skull is narrowest just above the ear, and leaving
+    // that out is most of why an ovoid head looks inflated.
+    d -= 0.0058 * gauss(y, 1.657, 0.021) *
+        (gauss(a, 1.16, 0.30) + gauss(a, -1.16, 0.30));
+
+    // Jaw corner.
+    d += 0.0048 * gauss(y, 1.551, 0.015) *
+        (gauss(a, 1.02, 0.34) + gauss(a, -1.02, 0.34));
+
+    // The occiput bulges low and tucks in high.
+    d += 0.0040 * gauss(y, 1.662, 0.032) * Math.max(0, -c);
+
+    return d;
+}
+
+/** Baked occlusion for the skull. Eyes dark, jaw underside dark, crown open. */
+function headAO(y, a) {
+    let ao = 0.42 + 0.34 * smooth01((y - 1.53) / 0.22);
+
+    // The eye sockets carry their own darkness rather than relying on the brow
+    // to cast into them. At fifteen metres the shadow is two pixels wide and
+    // the sun is often behind the figure; the baked term is what survives both.
+    ao -= 0.30 * gauss(y, 1.607, 0.013) *
+        (gauss(a, 0.42, 0.19) + gauss(a, -0.42, 0.19));
+
+    // Under the jaw and behind the ears.
+    ao -= 0.18 * gauss(y, 1.536, 0.016);
+    ao -= 0.10 * gauss(y, 1.616, 0.020) *
+        (gauss(a, 1.55, 0.22) + gauss(a, -1.55, 0.22));
+
+    return Math.max(0.06, Math.min(1, ao));
+}
+
+/**
+ * A point on (or `off` metres outside) the skull surface.
+ * @param {number} y @param {number} a @param {number} off @param {number[]} out
+ */
+function headPoint(y, a, off, out) {
+    headSection(y, _sec);
+    const s = Math.sin(a);
+    const c = Math.cos(a);
+    // Blend the front and back radii through the sides rather than switching at
+    // c = 0. A hard switch leaves a crease running vertically down both temples
+    // that no smooth-normal pass can hide.
+    const k = smooth01((c + 0.40) / 0.80);
+    const rz = _sec[2] + (_sec[1] - _sec[2]) * k;
+    const r = headRadial(y, a) + off;
+    out[0] = HEAD_CX + s * (_sec[0] + r);
+    out[1] = y;
+    out[2] = HEAD_CZ + c * (rz + r);
     return out;
 }
 
-function buildHood(B) {
+/** The skull, the nose and the ears. */
+function buildHead(B) {
+    // ---- cranium ----------------------------------------------------------
+    let prev = null;
+    let first = null;
+    for (let i = 0; i < HEAD_PROFILE.length; i++) {
+        const y = HEAD_PROFILE[i][0];
+        const row = [];
+        for (let c = 0; c < HEAD_COLS; c++) {
+            const a = (c / HEAD_COLS) * Math.PI * 2;
+            headPoint(y, a, 0, _hp);
+            row.push(B.vert(
+                _hp[0], _hp[1], _hp[2],
+                (c / HEAD_COLS) * 0.48, y - 1.52,
+                M_SKIN, headAO(y, a), B_HEAD, 1, 0, 0
+            ));
+        }
+        if (prev) {
+            for (let c = 0; c < HEAD_COLS; c++) {
+                const c2 = (c + 1) % HEAD_COLS;
+                B.quad(prev[c], prev[c2], row[c2], row[c]);
+            }
+        }
+        if (!first) first = row;
+        prev = row;
+    }
+
+    // Crown and chin caps. The chin is buried in the neck loft, but an open
+    // ring there shows as a black crescent whenever the head tips back.
+    const crown = B.vert(HEAD_CX, HEAD_TOP + 0.006, HEAD_CZ, 0.24, 0.25,
+        M_SKIN, 0.80, B_HEAD, 1, 0, 0);
+    const under = B.vert(HEAD_CX, 1.514, HEAD_CZ, 0.24, 0.0,
+        M_SKIN, 0.14, B_HEAD, 1, 0, 0);
+    for (let c = 0; c < HEAD_COLS; c++) {
+        const c2 = (c + 1) % HEAD_COLS;
+        B.tri(crown, prev[c], prev[c2]);
+        B.tri(under, first[c2], first[c]);
+    }
+
+    // ---- nose -------------------------------------------------------------
+    // Small, straight and slightly hooked at the tip. It contributes almost
+    // nothing to a front view and everything to a profile, which is the view
+    // the camera spends most of its time in over the shoulder.
+    const nose = [
+        ring(0, 1.640, HEAD_CZ + 0.068, 0.009, 0.007, 0.52, [B_HEAD, 1, 0, 0]),
+        ring(0, 1.618, HEAD_CZ + 0.079, 0.010, 0.011, 0.50, [B_HEAD, 1, 0, 0]),
+        ring(0, 1.598, HEAD_CZ + 0.089, 0.012, 0.015, 0.46, [B_HEAD, 1, 0, 0]),
+        ring(0, 1.583, HEAD_CZ + 0.091, 0.016, 0.016, 0.40, [B_HEAD, 1, 0, 0]),
+        ring(0, 1.574, HEAD_CZ + 0.078, 0.017, 0.012, 0.30, [B_HEAD, 1, 0, 0]),
+    ];
+    loft(B, nose, M_SKIN, [1, 0, 0], false, false);
+
+    // ---- ears -------------------------------------------------------------
+    for (let e = 0; e < 2; e++) {
+        const sx = e === 0 ? -1 : 1;
+        const ear = [
+            ring(sx * 0.064, 1.617, -0.007, 0.011, 0.023, 0.30, [B_HEAD, 1, 0, 0]),
+            ring(sx * 0.077, 1.619, -0.009, 0.014, 0.027, 0.38, [B_HEAD, 1, 0, 0]),
+            ring(sx * 0.085, 1.617, -0.007, 0.008, 0.020, 0.34, [B_HEAD, 1, 0, 0]),
+        ];
+        loft(B, ear, M_SKIN, [0, 1, 0], false, true);
+    }
+}
+
+// -----------------------------------------------------------------------------
+//  Hair
+// -----------------------------------------------------------------------------
+
+const HAIR_COLS = 30;
+const HAIR_ROWS = 6;
+
+/**
+ * The hairline, as a height per azimuth.
+ *
+ * High at the forehead, receding at the temples, and dropping to a nape at the
+ * back — a crop, short back and sides. The two sine terms at the end are the
+ * whole reason it does not look like a swimming cap: a hairline is an edge
+ * between two materials, and a *smooth* edge between two materials is the one
+ * thing hair never has.
+ */
+function hairlineY(a) {
+    const c = Math.cos(a);
+    let y = 1.645 + 0.045 * Math.max(0, c) - 0.042 * Math.max(0, -c);
+    y -= 0.015 * (gauss(a, 0.62, 0.26) + gauss(a, -0.62, 0.26)); // temples
+    y += 0.009 * gauss(a, 0.0, 0.30);                            // centre peak
+    y += 0.0040 * Math.sin(a * 13.0 + 0.7) + 0.0025 * Math.sin(a * 27.0 + 2.1);
+    return y;
+}
+
+/** Height of a hair sample: `t` 0 at the hairline, 1 at the crown. */
+function hairY(a, t) {
+    const y0 = hairlineY(a);
+    return y0 + (HEAD_TOP - y0) * t;
+}
+
+/**
+ * The solid cap under the shells.
+ *
+ * Shell fur is a stack of alpha-tested sheets and you can always see between
+ * them at a grazing angle. Without an opaque base the scalp shows through the
+ * gaps in silhouette and the crop reads as thinning. The cap costs 400
+ * triangles and removes the entire failure mode.
+ */
+function buildHairCap(B) {
+    let prev = null;
+    for (let r = 0; r <= HAIR_ROWS; r++) {
+        const t = r / HAIR_ROWS;
+        const row = [];
+        for (let c = 0; c < HAIR_COLS; c++) {
+            const a = (c / HAIR_COLS) * Math.PI * 2;
+            // Thickness tapers to nothing at the hairline, so the edge sinks
+            // into the scalp rather than standing off it as a visible lip.
+            const off = 0.0012 + 0.0088 * smooth01(t / 0.42);
+            headPoint(hairY(a, t), a, off, _hp);
+            row.push(B.vert(
+                _hp[0], _hp[1], _hp[2],
+                a * 0.075, t * 0.08,
+                M_HAIR, 0.26 + 0.50 * t, B_HEAD, 1, 0, 0
+            ));
+        }
+        if (prev) {
+            for (let c = 0; c < HAIR_COLS; c++) {
+                const c2 = (c + 1) % HAIR_COLS;
+                B.quad(prev[c], prev[c2], row[c2], row[c]);
+            }
+        }
+        prev = row;
+    }
+    const crown = B.vert(HEAD_CX, HEAD_TOP + 0.014, HEAD_CZ, 0.0, 0.09,
+        M_HAIR, 0.80, B_HEAD, 1, 0, 0);
+    for (let c = 0; c < HAIR_COLS; c++) {
+        B.tri(crown, prev[c], prev[(c + 1) % HAIR_COLS]);
+    }
+}
+
+/**
+ * The hair itself: shell fur over the cap.
+ *
+ * Same shader and the same trick as the cowl trim — N copies of one surface,
+ * each pushed further out, alpha-tested into strands — but tuned for a 2 cm
+ * crop instead of a 5 cm trim: shorter, four times denser, and its own material
+ * so it can be near-black while the trim stays leather-brown.
+ *
+ * Bound rigidly to the head bone. Hair this short does not swing, and the fur
+ * shader's droop term is already more motion than a crop should have.
+ */
+export function buildHair(scene) {
+    const B = new Builder();
+    B.explicitNormals = true;
+
+    const cols = HAIR_COLS;
+    const rows = HAIR_ROWS;
+    const n = (rows + 1) * cols;
+    const bases = new Float32Array(n * 3);
+    const outs = new Float32Array(n * 3);
+    const lens = new Float32Array(n);
+    const uvs = new Float32Array((rows + 1) * (cols + 1) * 2);
+
+    // Shell directions radiate from a point inside the braincase rather than
+    // from the true surface normal. Hair grows out of a scalp, not out of a
+    // brow ridge, and following the normal exactly makes the strands over the
+    // temples splay sideways.
+    const SC = [0, 1.668, HEAD_CZ - 0.006];
+
+    for (let r = 0; r <= rows; r++) {
+        const t = r / rows;
+        for (let c = 0; c < cols; c++) {
+            const a = (c / cols) * Math.PI * 2;
+            const k = r * cols + c;
+            const o = k * 3;
+
+            headPoint(hairY(a, t), a, 0.0105, _hp);
+            bases[o] = _hp[0]; bases[o + 1] = _hp[1]; bases[o + 2] = _hp[2];
+
+            let dx = _hp[0] - SC[0], dy = _hp[1] - SC[1], dz = _hp[2] - SC[2];
+            const dl = Math.hypot(dx, dy, dz) || 1;
+            outs[o] = dx / dl; outs[o + 1] = dy / dl; outs[o + 2] = dz / dl;
+
+            // Length: a fade at the hairline, full crop over the crown, and a
+            // shade shorter round the back and sides.
+            const cz = Math.cos(a);
+            const sides = 0.82 + 0.18 * Math.max(0, cz);
+            lens[k] = (0.0035 + 0.0165 * smooth01(t / 0.5)) * sides;
+        }
+    }
+
+    // Texture coordinates in metres of surface — the strand field's pitch is a
+    // physical size, so the seam column has to carry the *wrapped* arc length
+    // rather than reset to zero, or the strands compress into a stripe there.
+    const circ = 0.075 * Math.PI * 2;
+    for (let r = 0; r <= rows; r++) {
+        for (let c = 0; c <= cols; c++) {
+            const o = (r * (cols + 1) + c) * 2;
+            uvs[o] = (c / cols) * circ;
+            uvs[o + 1] = (r / rows) * 0.085;
+        }
+    }
+
+    emitFurPatch(B, cols, rows, bases, outs, uvs, lens, HAIR_SHELLS, B_HEAD, 0.44);
+    return finishSkinned(scene, "charHair", B, true);
+}
+
+// -----------------------------------------------------------------------------
+//  The fallen cowl
+// -----------------------------------------------------------------------------
+
+const COWL_COLS = 28;
+const COWL_ROWS = 6;
+
+/**
+ * The cowl, lowered.
+ *
+ * Not deleted — lowered. A desert robe without a hood at all reads as a
+ * bathrobe, and the shape bunched behind the neck is what tells you the figure
+ * *has* one and chose to take it off, which is a different character note than
+ * never having had one.
+ *
+ * It stands rather than hangs, and that is a clearance decision as much as an
+ * aesthetic one: the mantle behind it is a simulated panel that collides only
+ * with the torso capsules, so anything of ours that reaches down its back will
+ * eventually be flapped through. Everything here stays above the mantle's
+ * collar line at y = 1.442 and tucks its own hem *under* it.
+ */
+
+/** Top edge of the standing collar. Reused verbatim by the fur trim. */
+export function cowlRimPoint(s, out) {
+    const a = s * Math.PI * 2;
+    const sa = Math.sin(a);
+    const ca = Math.cos(a);
+    const back = Math.max(0, -ca);
+    out[0] = 0.116 * sa * (1.0 + 0.42 * back);
+    out[1] = 1.474 + 0.094 * back * back;
+    out[2] = -0.014 + 0.104 * ca - 0.046 * back;
+    return out;
+}
+
+function cowlBasePoint(s, out) {
+    const a = s * Math.PI * 2;
+    const sa = Math.sin(a);
+    const ca = Math.cos(a);
+    const back = Math.max(0, -ca);
+    out[0] = 0.148 * sa * (1.0 + 0.22 * back);
+    out[1] = 1.402 - 0.026 * back;
+    out[2] = -0.010 + 0.118 * ca;
+    return out;
+}
+
+function buildCowlDown(B) {
     const rim = [0, 0, 0];
     const base = [0, 0, 0];
     let prevRow = null;
 
-    for (let r = 0; r <= HOOD_ROWS; r++) {
-        const t = r / HOOD_ROWS;
+    for (let r = 0; r <= COWL_ROWS; r++) {
+        const t = r / COWL_ROWS;
         const row = [];
-        for (let c = 0; c < HOOD_COLS; c++) {
-            const s = c / HOOD_COLS;
-            hoodRimPoint(s, rim);
-            hoodBasePoint(s, base);
+        for (let c = 0; c < COWL_COLS; c++) {
+            const s = c / COWL_COLS;
+            cowlRimPoint(s, rim);
+            cowlBasePoint(s, base);
 
-            // Control point.
-            //
-            // Not the chord's midpoint pushed away from the skull: at the crown
-            // the chord runs from a rim point above and in front of the head to
-            // a base point below and behind it, straight through the skull, so
-            // its midpoint is already inside the head and "away from the head
-            // centre" points down into the shoulders.
-            //
-            // The control direction has to be stated, not derived. It sweeps
-            // from up-and-back over the crown, through sideways at the temples,
-            // to down-and-forward under the chin — which is the same sweep the
-            // rim parameter already makes, so it comes straight off `s`.
             const a = s * Math.PI * 2;
-            const sa = Math.sin(a), ca = Math.cos(a);
-            let nx = sa * 1.0;
-            let ny = ca * 0.84;
-            let nz = ca * -0.54;
-            const nl = Math.hypot(nx, ny, nz) || 1;
-            nx /= nl; ny /= nl; nz /= nl;
-            // Radius out from the head: widest over the crown, tightest at the
-            // throat, which is what gives the cowl its peak.
-            const rad = 0.205 + 0.062 * ca;
-            const mx = HEAD_C[0] + nx * rad;
-            const my = HEAD_C[1] + ny * rad;
-            const mz = HEAD_C[2] + nz * rad;
+            const ca = Math.cos(a);
+            const back = Math.max(0, -ca);
+
+            // Control point, bowed out and back. Heavier at the back, where the
+            // fabric is doubled over on itself, than at the throat.
+            const mx = (rim[0] + base[0]) * 0.5 * (1.0 + 0.30 * back);
+            const my = (rim[1] + base[1]) * 0.5 + 0.010 * back;
+            const mz = (rim[2] + base[2]) * 0.5 - 0.048 * back - 0.006;
 
             const it = 1 - t;
             const px = it * it * rim[0] + 2 * it * t * mx + t * t * base[0];
             const py = it * it * rim[1] + 2 * it * t * my + t * t * base[1];
             const pz = it * it * rim[2] + 2 * it * t * mz + t * t * base[2];
 
-            // Occlusion: the inside of a cowl sees almost no sky. It is the
-            // single cheapest thing that makes a hood read as deep.
-            const ao = 0.34 + 0.55 * Math.min(1, t * 2.2);
-            // UVs in metres: the rim is about a metre round and the sweep from
-            // rim to shoulder about 45 cm.
-            row.push(B.vert(px, py, pz, s * 1.02, t * 0.45, M_ROBE, ao, B_HOOD, 1, 0, 0));
+            // Folds. A collar that is a clean swept surface reads as moulded
+            // plastic; the pleats are what make it cloth that has been pushed
+            // back off a head rather than tailored into that shape.
+            const fold = 0.0075 * Math.sin(a * 9.0 + 1.1) * (0.35 + 0.65 * t) * (0.4 + 0.6 * back);
+            const fl = Math.hypot(px, pz - 0.0) || 1;
+
+            const ao = 0.30 + 0.48 * t;
+            row.push(B.vert(
+                px + (px / fl) * fold, py, pz + ((pz + 0.02) / fl) * fold,
+                s * 0.72, t * 0.22,
+                M_ROBE, ao, B_CHEST, 1, B_NECK, 0
+            ));
         }
         if (prevRow) {
-            for (let c = 0; c < HOOD_COLS; c++) {
-                const c2 = (c + 1) % HOOD_COLS;
+            for (let c = 0; c < COWL_COLS; c++) {
+                const c2 = (c + 1) % COWL_COLS;
                 B.quad(prevRow[c], prevRow[c2], row[c2], row[c]);
             }
         }
@@ -495,8 +827,17 @@ function buildHood(B) {
 // -----------------------------------------------------------------------------
 
 /** Shells per fur band. Below about 18 the layering is visible as banding. */
-const HOOD_SHELLS = 22;
+const COWL_SHELLS = 22;
 const CUFF_SHELLS = 18;
+/**
+ * Shells in the hair.
+ *
+ * Fewer than the trim, and that is not a saving. The stack has to resolve the
+ * strand *length*, and these strands are a third as long — twenty-two shells
+ * across 2 cm puts the sheets under a millimetre apart, which is finer than the
+ * strand field's own cell and just draws the same alpha test twelve extra times.
+ */
+const HAIR_SHELLS = 12;
 
 /**
  * Shell fur.
@@ -519,24 +860,29 @@ export function buildFur(scene) {
     B.explicitNormals = true;
     const p = [0, 0, 0];
 
-    // ---- hood rim ---------------------------------------------------------
-    // The band's outward direction is the rim's own bisector: away from the
-    // skull, tilted along the face direction so the trim frames the opening.
+    // ---- cowl rim ---------------------------------------------------------
+    // Runs the top edge of the fallen collar. Its outward direction points away
+    // from the neck axis and tips upward, so the trim stands proud of the
+    // collar instead of lying flat along it.
+    //
+    // Bound to the chest, not the hood bone: the cowl is off the head now and
+    // rides the shoulders. B_HOOD still exists and is still posed — it is just
+    // no longer carrying any geometry.
     const cols = 26;
     const bases = new Float32Array(cols * 3);
     const outs = new Float32Array(cols * 3);
+    const AXIS = [0, 1.470, -0.014];
     for (let c = 0; c < cols; c++) {
-        hoodRimPoint(c / cols, p);
+        cowlRimPoint(c / cols, p);
         bases[c * 3] = p[0]; bases[c * 3 + 1] = p[1]; bases[c * 3 + 2] = p[2];
-        let dx = p[0] - HEAD_C[0], dy = p[1] - HEAD_C[1], dz = p[2] - HEAD_C[2];
-        const dl = Math.hypot(dx, dy, dz) || 1;
-        dx = dx / dl + FACE_DIR[0] * 0.45;
-        dy = dy / dl + FACE_DIR[1] * 0.45;
-        dz = dz / dl + FACE_DIR[2] * 0.45;
+        let dx = p[0] - AXIS[0], dy = 0, dz = p[2] - AXIS[2];
+        const dl = Math.hypot(dx, dz) || 1;
+        dx = dx / dl; dz = dz / dl;
+        dy = 0.55;
         const l2 = Math.hypot(dx, dy, dz) || 1;
         outs[c * 3] = dx / l2; outs[c * 3 + 1] = dy / l2; outs[c * 3 + 2] = dz / l2;
     }
-    emitFurBand(B, cols, bases, outs, 0.024, 0.048, HOOD_SHELLS, B_HOOD, 0.62);
+    emitFurBand(B, cols, bases, outs, 0.018, 0.038, COWL_SHELLS, B_CHEST, 0.52);
 
     // ---- cuffs ------------------------------------------------------------
     for (let a = 0; a < 2; a++) {
@@ -653,6 +999,68 @@ function emitFurBand(B, cols, bases, outs, r0, len, shells, bone, ao) {
         for (let c = 0; c < cols; c++) {
             for (let k = 0; k < FUR_ARC_STEPS; k++) {
                 const a = rowBase + c * stride + k;
+                B.quad(a, a + 1, a + stride + 1, a + stride);
+            }
+        }
+    }
+}
+
+/**
+ * One fur *patch* — an open grid rather than a closed band.
+ *
+ * `emitFurBand` sweeps a cross-section around a ring, which is right for a trim
+ * and useless for a scalp: hair covers an area, not an edge. This takes the
+ * area directly as a (rows+1) x cols lattice of roots, each with its own
+ * outward direction and its own strand length, and emits the whole lattice once
+ * per shell.
+ *
+ * The lattice wraps in the column direction and does not in the row direction,
+ * so one duplicated seam column is emitted to carry the wrapped texture
+ * coordinate. Sharing the seam vertex instead would reset the strand field's
+ * arc length to zero there and draw a visible parting down one side of the head.
+ *
+ * @param {Builder} B
+ * @param {number} cols columns around, wrapping
+ * @param {number} rows row spans (so rows+1 lines of roots)
+ * @param {Float32Array} bases root positions, 3 floats per lattice point
+ * @param {Float32Array} outs unit shell direction, 3 floats per lattice point
+ * @param {Float32Array} uvs strand-field coordinates in metres, 2 floats per
+ *                           lattice point *including* the seam column
+ * @param {Float32Array} lens strand length per lattice point, metres
+ * @param {number} shells
+ * @param {number} bone
+ * @param {number} ao
+ */
+function emitFurPatch(B, cols, rows, bases, outs, uvs, lens, shells, bone, ao) {
+    const stride = cols + 1;
+
+    for (let s = 0; s < shells; s++) {
+        const t = s / (shells - 1);
+        const rowBase = B.pos.length / 3;
+
+        for (let r = 0; r <= rows; r++) {
+            for (let c = 0; c <= cols; c++) {
+                const k = r * cols + (c % cols);
+                const o = k * 3;
+                const dx = outs[o], dy = outs[o + 1], dz = outs[o + 2];
+                const push = lens[k] * t;
+                const u = (r * stride + c) * 2;
+                const vi = B.vert(
+                    bases[o] + dx * push,
+                    bases[o + 1] + dy * push,
+                    bases[o + 2] + dz * push,
+                    uvs[u], uvs[u + 1],
+                    t, ao, bone, 1, 0, 0
+                );
+                B.normal(vi, dx, dy, dz);
+            }
+        }
+
+        // As with the bands: shells are independent sheets, never stitched to
+        // each other. The gaps are the point.
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const a = rowBase + r * stride + c;
                 B.quad(a, a + 1, a + stride + 1, a + stride);
             }
         }

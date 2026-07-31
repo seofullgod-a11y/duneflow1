@@ -32,6 +32,9 @@ import { SpiceField } from "./spice.js";
 import { WormSystem } from "./worm.js";
 import { Wind } from "./wind.js";
 import { Controls } from "./controls.js";
+import {
+    Landmarks, SLOT_CLAMP, SLOT_MOUTH_Z, SLOT_START_Z, SPAWN_Z,
+} from "./landmarks.js";
 
 /** Stamina drain / regen rates, bar-fractions per second. */
 const ST_SPRINT = 0.15;
@@ -94,19 +97,25 @@ export class Game {
             onCast: (name) => this.hud.skill(name),
         });
 
+        // The named map. See landmarks.js — it mirrors landform.wgsl.
+        this.landmarks = new Landmarks();
+
         this._attacking = false;
         this.hud.setSpice(0);
         this.hud.setHp(1);
         this.hud.setStamina(1);
 
-        // The spawn canyon opening. FIX: the controller is taken from ctx
-        // here — the earlier crash was an undeclared `ch` in this block.
+        // The spawn slot: a gorge cut clean through the Great Rampart, a
+        // hundred metres of rock either side. The centreline is exactly x = 0
+        // because the slot is the one canyon in landform.wgsl authored with its
+        // meander switched off — which is what makes clamping to it on the CPU
+        // possible at all.
         this.phase = "canyon";
         {
             const c = ctx.controller;
-            c.position.x = Math.sin(-60 * 0.09) * 4.0;
-            c.position.z = -60;
-            c.position.y = ctx.terrain.heightAt(c.position.x, -60);
+            c.position.x = 0;
+            c.position.z = SPAWN_Z;
+            c.position.y = ctx.terrain.heightAt(0, SPAWN_Z);
         }
         this._storyT = 0;
         this._storyBeat = 0;
@@ -117,12 +126,12 @@ export class Game {
         this._storyT += dt;
         if (this._storyBeat === 0 && this._storyT > 2.0) {
             this._storyBeat = 1;
-            this.hud.toast("you wake in the deep shelter",
+            this.hud.toast("you wake in the slot",
                 "the tribe is gone \u00b7 the water is gone", 5200);
         } else if (this._storyBeat === 1 && this._storyT > 8.5) {
             this._storyBeat = 2;
-            this.hud.toast("follow the crystal light",
-                "find the way out", 4600);
+            this.hud.toast("the light is north",
+                "follow the cut out of the rampart", 4600);
         }
     }
 
@@ -200,11 +209,12 @@ export class Game {
 
         if (this.phase === "canyon") {
             this._story(dt);
-            const sway = Math.sin(ch.position.z * 0.09) * 4.0;
-            if (ch.position.z < 6) {
-                if (ch.position.x < sway - 2.4) ch.position.x = sway - 2.4;
-                if (ch.position.x > sway + 2.4) ch.position.x = sway + 2.4;
-                if (ch.position.z < -78) ch.position.z = -78;
+            if (ch.position.z < SLOT_MOUTH_Z + 6) {
+                // Straight walls, straight clamp. Held a little inside the
+                // floor mask — see SLOT_CLAMP.
+                if (ch.position.x < -SLOT_CLAMP) ch.position.x = -SLOT_CLAMP;
+                if (ch.position.x > SLOT_CLAMP) ch.position.x = SLOT_CLAMP;
+                if (ch.position.z < SLOT_START_Z + 14) ch.position.z = SLOT_START_Z + 14;
             } else {
                 this._exitCave();
             }
@@ -255,6 +265,19 @@ export class Game {
         // rides the gust envelope, so squalls visibly rake the frame. main.js
         // takes the max of this and the surf streak. Still air underground.
         this.stormStreak01 = underground ? 0 : 0.10 + this.wind.gust * 0.22;
+
+        // ---- the map ------------------------------------------------------
+        // Runs everywhere, including inside the slot: the tape is how the
+        // player learns that north is out before they are told it.
+        const cp = this.landmarks.update(ch.position, ch.facing, (l) => {
+            this.hud.discover(l.name, l.sub);
+            this.ctx.rig.addTrauma(0.06);
+        });
+        const near = this.landmarks.nearest;
+        this.hud.setCompass(
+            cp.heading, cp.marks, cp.count,
+            near && this.landmarks.found.has(near.id) ? near.name : null
+        );
 
         // ---- hud ----------------------------------------------------------
         this.hud.setHp(Math.max(0, this.hp));

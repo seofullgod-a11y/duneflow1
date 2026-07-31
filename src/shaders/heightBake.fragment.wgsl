@@ -21,12 +21,25 @@ uniform heightAmp: f32;
 fn main(input: FragmentInputs) -> FragmentOutputs {
     let p = uniforms.worldOrigin + input.vUV * uniforms.worldSize;
 
-    var h = terrainMacro(p, uniforms.windAngle, uniforms.heightAmp);
+    // (height, authored-rock mask, canyon-floor mask) — one evaluation for all
+    // three; see terrainMacroFull.
+    let macro = terrainMacroFull(p, uniforms.windAngle, uniforms.heightAmp);
+    var h = macro.x;
 
-    // Rock displaces snow upward; snow then re-accumulates on the flatter faces,
-    // which the snow material resolves from the mask in the aux bake.
+    // Rock displaces sand upward; sand then re-accumulates on the flatter faces,
+    // which the material resolves from the mask in the aux bake.
+    //
+    // Suppressed inside canyon floors. A scattered outcrop dropped into a 6 m
+    // corridor is a wall across the only route through it, and the player is
+    // clamped to the centreline down there and cannot walk round it.
+    let open = 1.0 - smoothstep(0.15, 0.75, macro.z);
     let rock = rockField(p, uniforms.windAngle);
-    h += rock.x;
+    h += rock.x * open;
 
-    fragmentOutputs.color = vec4f(h, rock.y, 0.0, 1.0);
+    // The authored mask covers cliffs, caps and canyon lips; the outcrop mask
+    // covers the scatter. Both feed the same channel — the material gates it by
+    // slope on its own, so painting generously here costs nothing.
+    let mask = max(rock.y * open, macro.y);
+
+    fragmentOutputs.color = vec4f(h, mask, 0.0, 1.0);
 }
