@@ -295,6 +295,22 @@ const CSS = `
     color: var(--frost-dim);
 }
 
+/* ---- objective line, under the status bars ------------------------------- */
+#hud-objective {
+    position: absolute;
+    top: 92px;
+    left: 36px;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--frost-dim);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.9);
+    opacity: 0;
+    transition: opacity 500ms ease;
+}
+#hud-objective.show { opacity: 0.85; }
+#hud-objective .glyph { color: var(--accent); margin-right: 8px; }
+
 /* ---- trade panel --------------------------------------------------------- */
 /* The sietch trade: spend spice on permanent upgrades. Keyboard-first (U to
    open, 1-4 to buy) because the pointer is usually locked; the rows are still
@@ -399,6 +415,7 @@ export class Hud {
                 <div class="title"></div>
                 <div class="rule b"></div>
             </div>
+            <div id="hud-objective"></div>
             <div id="hud-trade"></div>
             <div id="hud-death"></div>
         `;
@@ -426,6 +443,8 @@ export class Hud {
         this._foundTitle = this._foundEl.querySelector(".title");
         this._foundTimer = 0;
         this._lastPlace = null;
+        this._objEl = document.getElementById("hud-objective");
+        this._lastObj = null;
         this._tradeEl = document.getElementById("hud-trade");
         this._tradeOpen = false;
         this._onBuy = null;
@@ -618,6 +637,18 @@ export class Hud {
             this._placeEl.textContent = place || "";
         }
         this._placeEl.classList.toggle("show", !!place);
+    }
+
+    /** The story objective line. Pass null to hide. */
+    setObjective(text) {
+        if (text === this._lastObj) return;
+        this._lastObj = text;
+        if (!text) {
+            this._objEl.classList.remove("show");
+            return;
+        }
+        this._objEl.innerHTML = `<span class="glyph">\u25c8</span>${text}`;
+        this._objEl.classList.add("show");
     }
 
     /**

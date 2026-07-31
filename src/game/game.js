@@ -35,6 +35,8 @@ import { Controls } from "./controls.js";
 import {
     Landmarks, SLOT_CLAMP, SLOT_MOUTH_Z, SLOT_START_Z, SPAWN_Z,
 } from "./landmarks.js";
+import { Story, ST_BOSS } from "./story.js";
+import { set as setSetting } from "../core/settings.js";
 
 /** Stamina drain / regen rates, bar-fractions per second. */
 const ST_SPRINT = 0.15;
@@ -145,6 +147,8 @@ export class Game {
 
         /** @type {Record<string, boolean>} */
         this.upgrades = {};
+        /** The story layer. Created before the save loads so it can restore. */
+        this.story = new Story(this);
         this._loadSave();
         this.worm.noiseMul = this.upgrades.steps ? 0.55 : 1.0;
         ctx.controller.speedMul = this.upgrades.strider ? 1.2 : 1.0;
@@ -189,6 +193,7 @@ export class Game {
                 this.upgrades = d.upgrades || {};
                 this.spice = Math.max(0, d.spice | 0);
                 for (const id of d.found || []) this.landmarks.found.add(id);
+                this.story.loadFrom(d);
             }
         } catch (e) {
             // Private windows throw on localStorage; the game just starts fresh.
@@ -197,12 +202,35 @@ export class Game {
 
     _save() {
         try {
-            localStorage.setItem(SAVE_KEY, JSON.stringify({
+            const d = {
                 upgrades: this.upgrades,
                 spice: this.spice,
                 found: Array.from(this.landmarks.found),
-            }));
+            };
+            this.story.saveInto(d);
+            localStorage.setItem(SAVE_KEY, JSON.stringify(d));
         } catch (e) { /* see above */ }
+    }
+
+    /** Story hook: persist now. */
+    saveStory() {
+        this._save();
+    }
+
+    /** True while the Water/Sand Lash is held. The story's boss reads it. */
+    get isLashing() {
+        return this._attacking;
+    }
+
+    /**
+     * The ending, in the world: the permanent storm exhales. Settings writes,
+     * so the wind system, the streaks, the fur droop and the fog all follow
+     * without knowing the story exists. Idempotent — also applied on load for
+     * a finished save.
+     */
+    applyCalmWorld() {
+        setSetting("windStrength", 3.2);
+        setSetting("fogDensity", 0.011);
     }
 
     _buy(id) {
@@ -391,11 +419,14 @@ export class Game {
             this.hud.toast("the worm passes", "it has lost your trail");
         } else if (type === "attack") {
             if (this._iframes > 0) {
-                // Dodged. The strike lands where you were.
+                // Dodged. The strike lands where you were — and in the boss
+                // fight, the dodge is also the counter.
                 this.hud.toast("dodged", "shai-hulud strikes sand", 2400);
                 this.ctx.rig.addTrauma(0.30);
+                this.story.onBossStrike(true);
                 return;
             }
+            this.story.onBossStrike(false);
             this.hp -= HP_WORM_HIT * (this.upgrades.grip ? 0.5 : 1.0);
             this.ctx.post.resetHistory();
             if (this.hp > 0) {
@@ -539,6 +570,9 @@ export class Game {
         // takes the max of this and the surf streak. Still air underground.
         this.stormStreak01 = underground ? 0 : 0.10 + this.wind.gust * 0.22;
 
+        // ---- the story ----------------------------------------------------
+        this.story.update(dt);
+
         // ---- the map ------------------------------------------------------
         // Runs everywhere, including inside the slot: the tape is how the
         // player learns that north is out before they are told it.
@@ -574,7 +608,9 @@ export class Game {
         this.hud.setHp(Math.max(0, this.hp));
         this.hud.setStamina(this.stamina);
         this.hud.setNoise(this.worm.noise);
-        if (this.worm.hunting) {
+        if (this.story.stage === ST_BOSS) {
+            // The story owns the bar during the fight — it shows the wound.
+        } else if (this.worm.hunting) {
             const fill = 1 - Math.min(1, this.worm.distance / BOSS_RANGE);
             this.hud.setBoss("SHAI-HULUD", fill);
         } else {

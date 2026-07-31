@@ -151,11 +151,13 @@ export class Landmarks {
         /** Scratch, refilled each frame. Never reallocated. One extra slot
          *  carries the transient event mark (a spice blow). */
         this._marks = [];
-        for (let i = 0; i < LANDMARKS.length + 1; i++) {
+        for (let i = 0; i < LANDMARKS.length + 2; i++) {
             this._marks.push({ bearing: 0, dist: 0, label: "", known: false });
         }
         /** @type {{x:number, z:number}|null} transient compass mark */
         this.event = null;
+        /** @type {{x:number, z:number}|null} the story's current target */
+        this.quest = null;
         this._count = 0;
         /** Nearest landmark of any kind, for the header line. */
         this.nearest = null;
@@ -221,6 +223,13 @@ export class Landmarks {
             const m = this._marks[n++];
             m.bearing = Math.atan2(this.event.x - pos.x, this.event.z - pos.z);
             m.dist = Math.hypot(this.event.x - pos.x, this.event.z - pos.z);
+            m.known = true;
+            m.label = "";
+        }
+        if (this.quest) {
+            const m = this._marks[n++];
+            m.bearing = Math.atan2(this.quest.x - pos.x, this.quest.z - pos.z);
+            m.dist = Math.hypot(this.quest.x - pos.x, this.quest.z - pos.z);
             m.known = true;
             m.label = "";
         }

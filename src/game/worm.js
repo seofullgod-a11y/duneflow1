@@ -90,6 +90,12 @@ export class WormSystem {
         /** Scales how fast movement feeds the meter. The Quiet Steps upgrade
          *  lowers it; nothing else writes it. */
         this.noiseMul = 1;
+        /**
+         * Boss mode. While true the worm never loses the trail, never calms,
+         * and its strike does not end the hunt — the fight only ends when the
+         * story says it does. The story layer flips this; nothing here does.
+         */
+        this.bossMode = false;
         this.state = WORM_IDLE;
 
         // Worm body state while hunting.
@@ -109,6 +115,15 @@ export class WormSystem {
     /** @param {number} dt */
     update(dt) {
         const ch = this.ch;
+
+        // Boss: the meter is pinned. It heard you the moment it was called.
+        if (this.bossMode) {
+            this.noise = 1;
+            this._calm = 0;
+            if (this.state === WORM_IDLE) this._surface();
+            this._hunt(dt);
+            return;
+        }
 
         // ---- noise accumulation -----------------------------------------
         if (this._calm > 0) {
@@ -170,7 +185,7 @@ export class WormSystem {
                     WORM_SPEED_MIN + this.noise * (WORM_SPEED_MAX - WORM_SPEED_MIN)
                 );
             }
-        } else {
+        } else if (!this.bossMode) {
             this._lostTime += dt;
             if (this._lostTime > LOSE_AFTER) {
                 this.state = WORM_IDLE;
@@ -257,10 +272,25 @@ export class WormSystem {
         this.deform.brush(this.x, this.z, 4.5, 0.5, 0.45, 0.4, 0, 0, 1, 1);
         this.rig.addTrauma(1.0);
 
+        if (this.bossMode) {
+            // The Grandfather does not dive after a strike. It wheels for
+            // another pass — which is what makes the fight a fight.
+            this._retarget = 0;
+            this.onEvent("attack");
+            return;
+        }
         this.state = WORM_IDLE;
         this.noise = 0;
         this._calm = CALM_AFTER_ATTACK;
         this.onEvent("attack");
+    }
+
+    /** The story calls this when the boss is beaten or dismissed. */
+    dismiss() {
+        this.bossMode = false;
+        this.state = 0; // WORM_IDLE
+        this.noise = 0;
+        this._calm = 12;
     }
 
     /** True while a worm is on the surface. */
