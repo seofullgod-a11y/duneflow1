@@ -32,6 +32,7 @@ import { SpiceField } from "./spice.js";
 import { WormSystem } from "./worm.js";
 import { Wind } from "./wind.js";
 import { Controls } from "./controls.js";
+import { Cave, SPAWN } from "./cave.js";
 
 /** Stamina drain / regen rates, bar-fractions per second. */
 const ST_SPRINT = 0.15;
@@ -59,6 +60,7 @@ export class Game {
      *   spray: import("../vfx/particles.js").SprayField,
      *   post: import("../post/postChain.js").PostChain,
      *   spells: import("../spells/spellSystem.js").SpellSystem,
+     *   scene: import("@babylonjs/core/scene").Scene,
      * }} ctx
      */
     constructor(ctx) {
@@ -94,10 +96,47 @@ export class Game {
         });
 
         this._attacking = false;
-        this._intro = 4.5;
         this.hud.setSpice(0);
         this.hud.setHp(1);
         this.hud.setStamina(1);
+
+        // ---- the Deep Shelter opening --------------------------------
+        // The game starts underground; the open-erg systems (worm, spice,
+        // storm) hold their breath until the mouth is crossed.
+        this.cave = new Cave(ctx.scene, ctx.terrain);
+        /** "cave" until the mouth is crossed, then "erg". */
+        this.phase = "cave";
+        const ch = ctx.controller;
+        ch.position.x = SPAWN.x;
+        ch.position.z = SPAWN.z;
+        ch.position.y = ctx.terrain.heightAt(SPAWN.x, SPAWN.z);
+        this._storyT = 0;
+        this._storyBeat = 0;
+    }
+
+    /** The scripted trickle of the opening. */
+    _story(dt) {
+        this._storyT += dt;
+        if (this._storyBeat === 0 && this._storyT > 2.0) {
+            this._storyBeat = 1;
+            this.hud.toast("you wake in the deep shelter",
+                "the tribe is gone \u00b7 the water is gone", 5200);
+        } else if (this._storyBeat === 1 && this._storyT > 8.5) {
+            this._storyBeat = 2;
+            this.hud.toast("follow the crystal light",
+                "find the way out", 4600);
+        }
+    }
+
+    /** Crossing the mouth: the reveal, and the systems wake up. */
+    _exitCave() {
+        this.phase = "erg";
+        this.hud.death("THE OPEN ERG", 3600);
+        setTimeout(() => {
+            this.hud.toast("harvest the spice",
+                "the glittering blows \u00b7 speed draws the worm", 5200);
+        }, 3800);
+        this.ctx.rig.addTrauma(0.25);
     }
 
     /**
@@ -144,8 +183,8 @@ export class Game {
         this.spice -= lost;
 
         setTimeout(() => {
-            ch.position.set(0, 0, 0);
-            ch.position.y = this.ctx.terrain.heightAt(0, 0);
+            ch.position.set(0, 0, 8);
+            ch.position.y = this.ctx.terrain.heightAt(0, 8);
             ch.velocity.set(0, 0, 0);
             this.ctx.post.resetHistory();
             this.hp = 1;
@@ -161,16 +200,13 @@ export class Game {
     update(dt) {
         const ch = this.ctx.controller;
 
-        if (this._intro > 0) {
-            this._intro -= dt;
-            if (this._intro <= 0) {
-                this.hud.toast(
-                    "harvest the spice",
-                    "the glittering blows \u00b7 speed draws the worm",
-                    4200
-                );
-            }
+        // ---- phase: the Deep Shelter -------------------------------------
+        if (this.phase === "cave") {
+            this._story(dt);
+            this.cave.constrain(ch.position);
+            if (this.cave.isOutside(ch.position)) this._exitCave();
         }
+        const underground = this.phase === "cave";
 
         // ---- keyboard cast plate (buttons report through onCast) ---------
         // Runs before the spell dispatch consumes the field, so both input
@@ -205,15 +241,17 @@ export class Game {
         this.hp = Math.min(1, this.hp + HP_REGEN * dt);
         if (this.hp <= 0 && !this._dead) this._die();
 
-        // ---- systems ------------------------------------------------------
-        this.spiceField.update(dt, ch.position);
-        this.worm.update(dt);
-        this.wind.update(dt, ch.position);
+        // ---- systems (asleep underground) --------------------------------
+        if (!underground) {
+            this.spiceField.update(dt, ch.position);
+            this.worm.update(dt);
+            this.wind.update(dt, ch.position);
+        }
 
         // Storm streaks: a faint constant screen-space wind smear whose weight
         // rides the gust envelope, so squalls visibly rake the frame. main.js
-        // takes the max of this and the surf streak.
-        this.stormStreak01 = 0.10 + this.wind.gust * 0.22;
+        // takes the max of this and the surf streak. Still air underground.
+        this.stormStreak01 = underground ? 0 : 0.10 + this.wind.gust * 0.22;
 
         // ---- hud ----------------------------------------------------------
         this.hud.setHp(Math.max(0, this.hp));

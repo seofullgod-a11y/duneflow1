@@ -35,7 +35,7 @@ export const S = {
     // two align the sun rakes down every ridge, lights both flanks identically
     // and the fine structure reads as flat ground.
     windDirection: 42,
-    windStrength: 1.5,
+    windStrength: 10.5,
     /** Far-field mountain range on the skybox. */
     showMountains: true,
     /** Peak height of that range, metres. */

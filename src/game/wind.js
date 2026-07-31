@@ -66,7 +66,10 @@ export class Wind {
     update(dt, focus) {
         this._t += dt;
 
-        const strength = S.windStrength;
+        // The overlay value can run far past what the particle budget or the
+        // grain speeds can take, so it is soft-capped here: everything above 3
+        // still reads through the cloth and the streaks, which take it raw.
+        const strength = Math.min(S.windStrength, 3.0);
         if (strength <= 0.001) return;
 
         // ---- storm envelope ---------------------------------------------

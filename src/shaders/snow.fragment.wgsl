@@ -317,13 +317,13 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // DESERT: warm Arrakis sand. Kept in a narrow band and never near 1.0 for
     // the same reason the snow was: a clipped highlight reads as an untextured
     // blob, not as a sunlit dune.
-    var albedo = vec3f(0.640, 0.520, 0.360);
+    var albedo = vec3f(0.670, 0.515, 0.315);
     var roughness = 0.62;
     var f0 = vec3f(0.028);
     var thickness = 1.0; // 1 = deep loose sand, 0 = thin crust
 
     // Compacted sand: denser, darker, tighter specular, scatters less.
-    albedo = mix(albedo, vec3f(0.470, 0.365, 0.245), compression * 0.85);
+    albedo = mix(albedo, vec3f(0.450, 0.335, 0.210), compression * 0.85);
     roughness = mix(roughness, 0.34, compression);
     thickness = mix(thickness, 0.35, compression);
 
@@ -369,6 +369,16 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     if (deformBerm > 0.002) {
         let loose = clamp(deformBerm * 5.0, 0.0, 1.0);
         albedo = mix(albedo, vec3f(0.705, 0.590, 0.425), loose * 0.55);
+    }
+
+    // DESERT grain: two scales of albedo mottle so the surface reads as sand,
+    // not paint. Coarse patches drift warm/cool (heavier vs finer grains
+    // sorted by the wind); fine speckle is the granular fizz underfoot.
+    {
+        let coarse = noise2(world.xz * 1.7) * 0.5 + 0.5;
+        let fine = noise2(world.xz * 31.0) * 0.5 + 0.5;
+        albedo = mix(albedo, albedo * vec3f(1.07, 0.99, 0.88), (coarse - 0.5) * 0.9);
+        albedo *= 0.93 + 0.13 * fine;
         roughness = mix(roughness, 0.78, loose * 0.7);
         thickness = mix(thickness, 1.0, loose * 0.6);
         // Broken snow has crystal faces pointing everywhere, which is where the

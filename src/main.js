@@ -166,7 +166,7 @@ async function boot() {
     // ------------------------------------------------------------ gameplay
     // The game layer touches the engine only through public seams; see
     // src/game/game.js for the contract.
-    const game = new Game({ terrain, controller: character, rig, spray, post, spells });
+    const game = new Game({ terrain, controller: character, rig, spray, post, spells, scene });
 
     const overlay = new Overlay({ rig, character });
     initInput(canvas, { onToggleOverlay: () => overlay.toggle() });

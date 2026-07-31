@@ -136,7 +136,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
 
     // ------------------------------------------------------------- material
     // Freshly displaced snow: brighter and rougher than the pack it came out of.
-    let albedo = vec3f(0.895, 0.920, 0.965);
+    let albedo = vec3f(0.700, 0.575, 0.410); // DESERT: thrown sand sheet
     let roughness = 0.80;
     let f0 = vec3f(0.026);
 
@@ -259,7 +259,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     //     which is why a real snow cave is blue and not grey. Tying the tint to
     //     the darkening rather than to `barrel` directly means the two can never
     //     drift apart.
-    let caveTint = mix(vec3f(1.0), vec3f(0.55, 0.72, 1.0), (1.0 - occ) * 0.95);
+    let caveTint = mix(vec3f(1.0), vec3f(0.94, 0.76, 0.55), (1.0 - occ) * 0.95);
     color *= occ * caveTint;
 
     if (uniforms.glintIntensity > 0.001) {
